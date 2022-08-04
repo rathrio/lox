@@ -2,7 +2,7 @@ use std::io::{stdout, Write};
 
 use clap::Parser;
 
-use lox::scanner::{Scanner, Token};
+use lox::{scanner::Scanner, token::Token};
 
 #[derive(Parser, Debug, Default, Clone)]
 #[clap(author, version, about, long_about = None)]
