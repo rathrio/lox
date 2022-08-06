@@ -92,14 +92,15 @@ impl Parser {
 
 fn infix_binding_power(op: &Token) -> Result<(u8, u8), ParserError> {
     match op {
-        Token::Minus(_) => Ok((5, 6)),
-        Token::Plus(_) => Ok((5, 6)),
-        Token::Slash(_) => Ok((7, 8)),
-        Token::Star(_) => Ok((7, 8)),
-        Token::BangEqual(_) | Token::EqualEqual(_) => Ok((1, 2)),
+        Token::Comma(_) => Ok((1, 2)),
+        Token::BangEqual(_) | Token::EqualEqual(_) => Ok((2, 3)),
         Token::Greater(_) | Token::GreaterEqual(_) | Token::Less(_) | Token::LessEqual(_) => {
-            Ok((3, 4))
+            Ok((4, 5))
         }
+        Token::Minus(_) => Ok((6, 7)),
+        Token::Plus(_) => Ok((6, 7)),
+        Token::Slash(_) => Ok((8, 9)),
+        Token::Star(_) => Ok((8, 9)),
         t => Err(ParserError::new(format!(
             "invalid infix operator {} on line {}",
             t,
@@ -126,6 +127,12 @@ mod tests {
         assert_eq!("nil", sexp("nil"));
     }
 
+    #[ignore] // TODO as soon as identifiers are supported
+    #[test]
+    fn test_identifier() {
+        assert_eq!("(+ a b)", sexp("a + b"));
+    }
+
     #[test]
     fn test_binary_expr() {
         assert_eq!("(+ 1 2)", sexp("1 + 2"));
@@ -147,5 +154,10 @@ mod tests {
         assert_eq!("(+ (+ 1 (* 2 3)) 4)", sexp("1 + 2 * 3 + 4"));
         assert_eq!("(+ (/ 1 2) 3)", sexp("1 / 2 + 3"));
         assert_eq!("(!= (> 1 3) (<= 23 2))", sexp("1 > 3 != 23 <= 2"));
+    }
+
+    #[test]
+    fn test_comma_expr() {
+        assert_eq!("(, (+ 1 3) (+ 2 (/ 3 2)))", sexp("1 + 3, 2 + 3 / 2"));
     }
 }

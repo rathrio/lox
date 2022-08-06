@@ -72,6 +72,7 @@ impl Token {
                 | Token::LessEqual(_)
                 | Token::And(_)
                 | Token::Or(_)
+                | Token::Comma(_)
         )
     }
 
