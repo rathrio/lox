@@ -55,6 +55,27 @@ pub enum Token {
     Error(Line, String),
 }
 
+impl Token {
+    /// Whether this token can be used as an operator within a binary expression
+    pub fn is_binary_op(&self) -> bool {
+        matches!(
+            self,
+            Token::Minus(_)
+                | Token::Plus(_)
+                | Token::Slash(_)
+                | Token::Star(_)
+                | Token::BangEqual(_)
+                | Token::EqualEqual(_)
+                | Token::Greater(_)
+                | Token::GreaterEqual(_)
+                | Token::Less(_)
+                | Token::LessEqual(_)
+                | Token::And(_)
+                | Token::Or(_)
+        )
+    }
+}
+
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -103,7 +124,7 @@ impl Display for Token {
 }
 
 #[derive(Debug)]
-pub struct Scanner {
+pub struct Lexer {
     source: Vec<char>,
     tokens: Vec<Token>,
     current: usize,
@@ -111,7 +132,7 @@ pub struct Scanner {
     line: usize,
 }
 
-impl Scanner {
+impl Lexer {
     pub fn new(source: String) -> Self {
         Self {
             source: source.chars().into_iter().collect(),
@@ -122,17 +143,17 @@ impl Scanner {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> Vec<Token> {
+    pub fn lex_tokens(&mut self) -> Vec<Token> {
         while !self.is_at_end() {
             self.start = self.current;
-            self.scan_token();
+            self.lex_token();
         }
 
         self.tokens.push(Token::Eof(self.line));
         self.tokens.clone()
     }
 
-    fn scan_token(&mut self) {
+    fn lex_token(&mut self) {
         let c = self.advance();
 
         match c {

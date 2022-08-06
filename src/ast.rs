@@ -1,4 +1,4 @@
-use crate::scanner::Token;
+use crate::lexer::Token;
 
 /// ```
 /// expression     → literal
@@ -24,7 +24,7 @@ pub enum Expr {
     Binary(Box<Expr>, Token, Box<Expr>),
 }
 
-fn sexp(e: &Expr) -> String {
+pub fn sexp(e: &Expr) -> String {
     match e {
         Expr::Number(n) => format!("{}", n),
         Expr::Str(s) => s.to_string(),
@@ -36,6 +36,7 @@ fn sexp(e: &Expr) -> String {
     }
 }
 
+#[allow(unused)]
 fn rpn(e: &Expr) -> String {
     match e {
         Expr::Number(n) => format!("{}", n),

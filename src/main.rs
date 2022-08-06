@@ -1,22 +1,17 @@
+use clap::Parser as ClapParser;
+use lox::ast;
+use lox::parser::Parser;
 use std::io::{stdout, Write};
 
-use clap::Parser;
-use lox::scanner::{Scanner, Token};
-
-#[derive(Parser, Debug, Default, Clone)]
+#[derive(ClapParser, Debug, Default, Clone)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
-    /// Will read from STDIN if omitted
     file: Option<String>,
 }
 
 fn run(script: String) {
-    let mut scanner = Scanner::new(script);
-    let tokens: Vec<Token> = scanner.scan_tokens();
-
-    for token in tokens {
-        println!("{:?}", token);
-    }
+    let expr = Parser::parse_expr_from_str(&script);
+    println!("{}", ast::sexp(&expr));
 }
 
 fn run_file(path: &str) {
