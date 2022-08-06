@@ -5,7 +5,7 @@ use crate::lexer::Token;
 ///                | unary
 ///                | binary
 ///                | grouping ;
-//
+///
 /// literal        → NUMBER | STRING | "true" | "false" | "nil" ;
 /// grouping       → "(" expression ")" ;
 /// unary          → ( "-" | "!" ) expression ;
@@ -27,7 +27,7 @@ pub enum Expr {
 pub fn sexp(e: &Expr) -> String {
     match e {
         Expr::Number(n) => format!("{}", n),
-        Expr::Str(s) => s.to_string(),
+        Expr::Str(s) => format!("{:?}", s),
         Expr::Bool(b) => format!("{}", b),
         Expr::Nil => "nil".to_string(),
         Expr::Grouping(e) => format!("(group {})", sexp(e)),

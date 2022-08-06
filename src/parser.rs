@@ -18,6 +18,10 @@ impl Parser {
     fn parse_expr(&mut self, min_bp: u8) -> Expr {
         let mut lhs = match self.next() {
             Token::Number(_, number) => Expr::Number(number as i64),
+            Token::String(_, string) => Expr::Str(string),
+            Token::True(_) => Expr::Bool(true),
+            Token::False(_) => Expr::Bool(false),
+            Token::Nil(_) => Expr::Nil,
             Token::LeftParen(_) => {
                 let lhs = self.parse_expr(0);
                 match self.next() {
@@ -26,7 +30,7 @@ impl Parser {
                 }
                 lhs
             }
-            _ => panic!("invalid start of expression"),
+            t => panic!("invalid start of expression: {:?}", t),
         };
 
         loop {
@@ -72,67 +76,39 @@ fn infix_binding_power(op: &Token) -> (u8, u8) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::sexp;
+    use crate::ast;
 
-    fn parse(input: &str) -> Expr {
-        Parser::parse_expr_from_str(input)
+    fn sexp(input: &str) -> String {
+        ast::sexp(&Parser::parse_expr_from_str(input))
     }
 
     #[test]
-    fn test_number() {
-        let expr = parse("42");
-        assert_eq!("42", sexp(&expr));
+    fn test_literals() {
+        assert_eq!("42", sexp("42"));
+        assert_eq!("\"spongebob\"", sexp("\"spongebob\""));
+        assert_eq!("true", sexp("true"));
+        assert_eq!("false", sexp("false"));
+        assert_eq!("nil", sexp("nil"));
     }
 
     #[test]
     fn test_binary_expr() {
-        let expr = parse("1 + 2");
-        assert_eq!("(+ 1 2)", sexp(&expr));
+        assert_eq!("(+ 1 2)", sexp("1 + 2"));
+        assert_eq!("(- (+ 1 2) 3)", sexp("1 + 2 - 3"));
     }
 
     #[test]
-    fn test_binary_expr_2() {
-        let expr = parse("1 + 2 - 3");
-        assert_eq!("(- (+ 1 2) 3)", sexp(&expr));
-    }
-
-    #[test]
-    fn test_parse_grouping() {
-        let expr = parse("(1 + 2) * 3");
-        assert_eq!("(* (+ 1 2) 3)", sexp(&expr));
-    }
-
-    #[test]
-    fn test_parse_grouping_2() {
-        let expr = parse("(((1 + 2)))");
-        assert_eq!("(+ 1 2)", sexp(&expr));
-    }
-
-    #[test]
-    fn test_parse_grouping_3() {
-        let grouped = parse("1 + (2 * 3)");
-        let ungrouped = parse("1 + 2 * 3");
-        assert_eq!(sexp(&grouped), sexp(&ungrouped));
+    fn test_grouping() {
+        assert_eq!("(* (+ 1 2) 3)", sexp("(1 + 2) * 3"));
+        assert_eq!("(+ 1 2)", sexp("(((1 + 2)))"));
+        assert_eq!(sexp("1 + (2 * 3)"), sexp("1 + 2 * 3"));
     }
 
     #[test]
     fn test_binary_expr_precedence() {
-        let expr = parse("1 + 2 * 3");
-        assert_eq!("(+ 1 (* 2 3))", sexp(&expr));
-
-        let expr = parse("1 + 2 / 3");
-        assert_eq!("(+ 1 (/ 2 3))", sexp(&expr));
-    }
-
-    #[test]
-    fn test_binary_expr_precedence_2() {
-        let expr = parse("1 + 2 * 3 + 4");
-        assert_eq!("(+ (+ 1 (* 2 3)) 4)", sexp(&expr));
-    }
-
-    #[test]
-    fn test_binary_expr_precedence_3() {
-        let expr = parse("1 / 2 + 3");
-        assert_eq!("(+ (/ 1 2) 3)", sexp(&expr));
+        assert_eq!("(+ 1 (* 2 3))", sexp("1 + 2 * 3"));
+        assert_eq!("(+ 1 (/ 2 3))", sexp("1 + 2 / 3"));
+        assert_eq!("(+ (+ 1 (* 2 3)) 4)", sexp("1 + 2 * 3 + 4"));
+        assert_eq!("(+ (/ 1 2) 3)", sexp("1 / 2 + 3"));
     }
 }
