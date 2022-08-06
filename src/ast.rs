@@ -1,6 +1,6 @@
 use crate::lexer::Token;
 
-/// ```
+/// ```ebnf
 /// expression     → literal
 ///                | unary
 ///                | binary

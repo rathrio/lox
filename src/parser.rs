@@ -18,13 +18,21 @@ impl Parser {
     fn parse_expr(&mut self, min_bp: u8) -> Expr {
         let mut lhs = match self.next() {
             Token::Number(_, number) => Expr::Number(number as i64),
+            Token::LeftParen(_) => {
+                let lhs = self.parse_expr(0);
+                match self.next() {
+                    Token::RightParen(_) => {}
+                    t => panic!("expected ), got {:?}", t),
+                }
+                lhs
+            }
             _ => panic!("invalid start of expression"),
         };
 
         loop {
             let op = match self.peek() {
                 t if t.is_binary_op() => t,
-                Token::Eof(_) => break,
+                Token::Eof(_) | Token::RightParen(_) => break,
                 t => panic!("bad operator token {:?}", t),
             };
 
@@ -71,25 +79,44 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_number() {
+    fn test_number() {
         let expr = parse("42");
         assert_eq!("42", sexp(&expr));
     }
 
     #[test]
-    fn test_parse_binary() {
+    fn test_binary_expr() {
         let expr = parse("1 + 2");
         assert_eq!("(+ 1 2)", sexp(&expr));
     }
 
     #[test]
-    fn test_parse_binary_2() {
+    fn test_binary_expr_2() {
         let expr = parse("1 + 2 - 3");
         assert_eq!("(- (+ 1 2) 3)", sexp(&expr));
     }
 
     #[test]
-    fn test_parse_binary_precedence() {
+    fn test_parse_grouping() {
+        let expr = parse("(1 + 2) * 3");
+        assert_eq!("(* (+ 1 2) 3)", sexp(&expr));
+    }
+
+    #[test]
+    fn test_parse_grouping_2() {
+        let expr = parse("(((1 + 2)))");
+        assert_eq!("(+ 1 2)", sexp(&expr));
+    }
+
+    #[test]
+    fn test_parse_grouping_3() {
+        let grouped = parse("1 + (2 * 3)");
+        let ungrouped = parse("1 + 2 * 3");
+        assert_eq!(sexp(&grouped), sexp(&ungrouped));
+    }
+
+    #[test]
+    fn test_binary_expr_precedence() {
         let expr = parse("1 + 2 * 3");
         assert_eq!("(+ 1 (* 2 3))", sexp(&expr));
 
@@ -98,13 +125,13 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_binary_precedence_2() {
+    fn test_binary_expr_precedence_2() {
         let expr = parse("1 + 2 * 3 + 4");
         assert_eq!("(+ (+ 1 (* 2 3)) 4)", sexp(&expr));
     }
 
     #[test]
-    fn test_parse_binary_precedence_3() {
+    fn test_binary_expr_precedence_3() {
         let expr = parse("1 / 2 + 3");
         assert_eq!("(+ (/ 1 2) 3)", sexp(&expr));
     }
