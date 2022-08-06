@@ -35,6 +35,19 @@ impl Parser {
                 let lhs = self.parse_expr(bp)?;
                 Ok(Expr::Unary(op, Box::new(lhs)))
             }
+            op if op.is_infix_op() => {
+                // Attempt to consume RHS for ease of error recovery
+                let (l_bp, r_bp) = infix_binding_power(&op)?;
+                if l_bp >= min_bp {
+                    self.parse_expr(r_bp)?;
+                }
+
+                Err(ParserError::new(format!(
+                    "LHS of binary operation \"{}\" is missing on line {}",
+                    op,
+                    op.line()
+                )))
+            }
             Token::Number(_, number) => Ok(Expr::Number(number as i64)),
             Token::String(_, string) => Ok(Expr::Str(string)),
             Token::True(_) => Ok(Expr::Bool(true)),
@@ -147,9 +160,13 @@ mod tests {
     use super::*;
     use crate::ast;
 
+    fn parse_expr(input: &str) -> Result<Expr, ParserError> {
+        Parser::parse_expr_from_str(input)
+    }
+
     fn sexp(input: &str) -> String {
-        let ast = Parser::parse_expr_from_str(input).unwrap();
-        ast::sexp(&ast)
+        let expr = parse_expr(input).unwrap();
+        ast::sexp(&expr)
     }
 
     #[test]
@@ -216,5 +233,19 @@ mod tests {
     #[test]
     fn test_ternary_expr_precedence() {
         assert_eq!("(? 1 2 (? 3 4 5))", sexp("1 ? 2 : 3 ? 4 : 5"));
+    }
+
+    #[test]
+    fn test_errors() {
+        assert!(parse_expr("1 +").is_err());
+        assert!(parse_expr("(42").is_err());
+    }
+
+    #[test]
+    fn test_binary_lhs_missin_error() {
+        match parse_expr(" / 34") {
+            Ok(_) => panic!("this parse should not succeed"),
+            Err(e) => assert!(e.report.contains("LHS")),
+        };
     }
 }

@@ -21,3 +21,5 @@
    left-hand operand. In other words, detect a binary operator appearing at the
    beginning of an expression. Report that as an error, but also parse and discard
    a right-hand operand with the appropriate precedence.
+
+   See `lox::parser::tests::test_binary_lhs_missin_error`.
