@@ -30,6 +30,11 @@ impl Parser {
 
     fn parse_expr(&mut self, min_bp: u8) -> Result<Expr, ParserError> {
         let mut lhs = match self.next() {
+            op if op.is_unary_op() => {
+                let (_, bp) = prefix_binding_power(&op)?;
+                let lhs = self.parse_expr(bp)?;
+                Ok(Expr::Unary(op, Box::new(lhs)))
+            }
             Token::Number(_, number) => Ok(Expr::Number(number as i64)),
             Token::String(_, string) => Ok(Expr::Str(string)),
             Token::True(_) => Ok(Expr::Bool(true)),
@@ -109,6 +114,17 @@ fn infix_binding_power(op: &Token) -> Result<(u8, u8), ParserError> {
     }
 }
 
+fn prefix_binding_power(op: &Token) -> Result<((), u8), ParserError> {
+    match op {
+        Token::Minus(_) | Token::Bang(_) => Ok(((), 10)),
+        t => Err(ParserError::new(format!(
+            "invalid prefix operator {} on line {}",
+            t,
+            t.line()
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,6 +147,16 @@ mod tests {
     #[test]
     fn test_identifier() {
         assert_eq!("(+ a b)", sexp("a + b"));
+    }
+
+    #[test]
+    fn test_unary() {
+        assert_eq!("(! false)", sexp("!false"));
+    }
+
+    #[test]
+    fn test_unary_precedence() {
+        assert_eq!("(== (! false) (> 2 3))", sexp("!false == 2 > 3"));
     }
 
     #[test]

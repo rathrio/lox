@@ -56,7 +56,6 @@ pub enum Token {
 }
 
 impl Token {
-    /// Whether this token can be used as an operator within a binary expression
     pub fn is_binary_op(&self) -> bool {
         matches!(
             self,
@@ -74,6 +73,10 @@ impl Token {
                 | Token::Or(_)
                 | Token::Comma(_)
         )
+    }
+
+    pub fn is_unary_op(&self) -> bool {
+        matches!(self, Token::Bang(_) | Token::Minus(_))
     }
 
     // TODO: there must be a more concise way to do this...
