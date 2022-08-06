@@ -17,7 +17,7 @@ pub enum Token {
     Slash(Line),
     Star(Line),
 
-    // One or two character tokensjjjjjjjjjjjjjjjj
+    // One or two character tokens
     Bang(Line),
     BangEqual(Line),
     Equal(Line),
@@ -74,6 +74,52 @@ impl Token {
                 | Token::Or(_)
         )
     }
+
+    // TODO: there must be a more concise way to do this...
+    pub fn line(&self) -> Line {
+        match self {
+            Token::LeftParen(line)
+            | Token::RightParen(line)
+            | Token::LeftBrace(line)
+            | Token::RightBrace(line)
+            | Token::Comma(line)
+            | Token::Dot(line)
+            | Token::Minus(line)
+            | Token::Plus(line)
+            | Token::Semicolon(line)
+            | Token::Slash(line)
+            | Token::Star(line)
+            | Token::Bang(line)
+            | Token::BangEqual(line)
+            | Token::Equal(line)
+            | Token::EqualEqual(line)
+            | Token::Greater(line)
+            | Token::GreaterEqual(line)
+            | Token::Less(line)
+            | Token::LessEqual(line)
+            | Token::Identifier(line, _)
+            | Token::String(line, _)
+            | Token::Number(line, _)
+            | Token::And(line)
+            | Token::Class(line)
+            | Token::Else(line)
+            | Token::False(line)
+            | Token::Fun(line)
+            | Token::For(line)
+            | Token::If(line)
+            | Token::Nil(line)
+            | Token::Or(line)
+            | Token::Print(line)
+            | Token::Return(line)
+            | Token::Super(line)
+            | Token::This(line)
+            | Token::True(line)
+            | Token::Var(line)
+            | Token::While(line)
+            | Token::Eof(line)
+            | Token::Error(line, _) => *line,
+        }
+    }
 }
 
 impl Display for Token {
@@ -117,7 +163,7 @@ impl Display for Token {
             Token::True(_) => write!(f, "true"),
             Token::Var(_) => write!(f, "var"),
             Token::While(_) => write!(f, "while"),
-            Token::Eof(_) => write!(f, ""),
+            Token::Eof(_) => write!(f, "EOF"),
             Token::Error(_, _) => Ok(()),
         }
     }

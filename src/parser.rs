@@ -3,8 +3,17 @@ use crate::{
     lexer::{Lexer, Token},
 };
 
+#[derive(Debug)]
 pub struct ParserError {
-    offending_token: Token,
+    report: String,
+}
+
+impl ParserError {
+    fn new(report: impl Into<String>) -> Self {
+        Self {
+            report: report.into(),
+        }
+    }
 }
 
 pub struct Parser {
@@ -12,32 +21,38 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn parse_expr_from_str(input: &str) -> Expr {
+    pub fn parse_expr_from_str(input: &str) -> Result<Expr, ParserError> {
         let mut s = Lexer::new(input.to_string());
         let tokens = s.lex_tokens();
         let mut parser = Self { tokens };
         parser.parse_expr(0)
     }
 
-    fn parse_expr(&mut self, min_bp: u8) -> Expr {
+    fn parse_expr(&mut self, min_bp: u8) -> Result<Expr, ParserError> {
         let mut lhs = match self.next() {
-            Token::Number(_, number) => Expr::Number(number as i64),
-            Token::String(_, string) => Expr::Str(string),
-            Token::True(_) => Expr::Bool(true),
-            Token::False(_) => Expr::Bool(false),
-            Token::Nil(_) => Expr::Nil,
+            Token::Number(_, number) => Ok(Expr::Number(number as i64)),
+            Token::String(_, string) => Ok(Expr::Str(string)),
+            Token::True(_) => Ok(Expr::Bool(true)),
+            Token::False(_) => Ok(Expr::Bool(false)),
+            Token::Nil(_) => Ok(Expr::Nil),
             Token::LeftParen(_) => {
-                let lhs = self.parse_expr(0);
+                let lhs = self.parse_expr(0)?;
 
                 match self.next() {
-                    Token::RightParen(_) => {}
-                    t => panic!("expected ), got {:?}", t),
+                    Token::RightParen(_) => Ok(Expr::Grouping(Box::new(lhs))),
+                    t => Err(ParserError::new(format!(
+                        "expected a \")\", but got {} on line {}",
+                        t,
+                        t.line()
+                    ))),
                 }
-
-                Expr::Grouping(Box::new(lhs))
             }
-            t => panic!("invalid start of expression: {:?}", t),
-        };
+            t => Err(ParserError::new(format!(
+                "invalid start of expression with {} on line {}",
+                t,
+                t.line()
+            ))),
+        }?;
 
         loop {
             let op = match self.peek() {
@@ -53,11 +68,11 @@ impl Parser {
 
             // consume the operator
             self.next();
-            let rhs = self.parse_expr(r_bp);
+            let rhs = self.parse_expr(r_bp)?;
             lhs = Expr::Binary(Box::new(lhs), op.clone(), Box::new(rhs))
         }
 
-        lhs
+        Ok(lhs)
     }
 
     fn peek(&self) -> Token {
@@ -87,7 +102,7 @@ mod tests {
     use crate::ast;
 
     fn sexp(input: &str) -> String {
-        ast::sexp(&Parser::parse_expr_from_str(input))
+        ast::sexp(&Parser::parse_expr_from_str(input).unwrap())
     }
 
     #[test]
