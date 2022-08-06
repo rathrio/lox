@@ -3,6 +3,10 @@ use crate::{
     lexer::{Lexer, Token},
 };
 
+pub struct ParserError {
+    offending_token: Token,
+}
+
 pub struct Parser {
     tokens: Vec<Token>,
 }
@@ -24,11 +28,13 @@ impl Parser {
             Token::Nil(_) => Expr::Nil,
             Token::LeftParen(_) => {
                 let lhs = self.parse_expr(0);
+
                 match self.next() {
                     Token::RightParen(_) => {}
                     t => panic!("expected ), got {:?}", t),
                 }
-                lhs
+
+                Expr::Grouping(Box::new(lhs))
             }
             t => panic!("invalid start of expression: {:?}", t),
         };
@@ -103,9 +109,8 @@ mod tests {
 
     #[test]
     fn test_grouping() {
-        assert_eq!("(* (+ 1 2) 3)", sexp("(1 + 2) * 3"));
-        assert_eq!("(+ 1 2)", sexp("(((1 + 2)))"));
-        assert_eq!(sexp("1 + (2 * 3)"), sexp("1 + 2 * 3"));
+        assert_eq!("(* (group (+ 1 2)) 3)", sexp("(1 + 2) * 3"));
+        assert_eq!("(group (group (group (+ 1 2))))", sexp("(((1 + 2)))"));
     }
 
     #[test]
