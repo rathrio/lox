@@ -10,8 +10,12 @@ pub struct Args {
 }
 
 fn run(script: String) {
-    let expr = Parser::parse_expr_from_str(&script);
-    println!("{}", ast::sexp(&expr));
+    let output = match Parser::parse_expr_from_str(&script) {
+        Ok(ast) => ast::sexp(&ast),
+        Err(error) => error.report,
+    };
+
+    println!("{}", output);
 }
 
 fn run_file(path: &str) {

@@ -5,7 +5,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct ParserError {
-    report: String,
+    pub report: String,
 }
 
 impl ParserError {
@@ -41,14 +41,14 @@ impl Parser {
                 match self.next() {
                     Token::RightParen(_) => Ok(Expr::Grouping(Box::new(lhs))),
                     t => Err(ParserError::new(format!(
-                        "expected a \")\", but got {} on line {}",
+                        "expected a \")\", but got \"{}\" on line {}",
                         t,
                         t.line()
                     ))),
                 }
             }
             t => Err(ParserError::new(format!(
-                "invalid start of expression with {} on line {}",
+                "invalid start of expression with \"{}\" on line {}",
                 t,
                 t.line()
             ))),
@@ -58,15 +58,21 @@ impl Parser {
             let op = match self.peek() {
                 t if t.is_binary_op() => t,
                 Token::Eof(_) | Token::RightParen(_) => break,
-                t => panic!("bad operator token {:?}", t),
+                t => {
+                    return Err(ParserError::new(format!(
+                        "expected an operator, but got \"{}\" on line {}",
+                        t,
+                        t.line()
+                    )))
+                }
             };
 
-            let (l_bp, r_bp) = infix_binding_power(&op);
+            let (l_bp, r_bp) = infix_binding_power(&op)?;
             if l_bp < min_bp {
                 break;
             }
 
-            // consume the operator
+            // consume the operator we peeked at the beginning of the loop
             self.next();
             let rhs = self.parse_expr(r_bp)?;
             lhs = Expr::Binary(Box::new(lhs), op.clone(), Box::new(rhs))
@@ -84,15 +90,21 @@ impl Parser {
     }
 }
 
-fn infix_binding_power(op: &Token) -> (u8, u8) {
+fn infix_binding_power(op: &Token) -> Result<(u8, u8), ParserError> {
     match op {
-        Token::Minus(_) => (5, 6),
-        Token::Plus(_) => (5, 6),
-        Token::Slash(_) => (7, 8),
-        Token::Star(_) => (7, 8),
-        Token::BangEqual(_) | Token::EqualEqual(_) => (1, 2),
-        Token::Greater(_) | Token::GreaterEqual(_) | Token::Less(_) | Token::LessEqual(_) => (3, 4),
-        t => panic!("invalid infix operator {:?}", t),
+        Token::Minus(_) => Ok((5, 6)),
+        Token::Plus(_) => Ok((5, 6)),
+        Token::Slash(_) => Ok((7, 8)),
+        Token::Star(_) => Ok((7, 8)),
+        Token::BangEqual(_) | Token::EqualEqual(_) => Ok((1, 2)),
+        Token::Greater(_) | Token::GreaterEqual(_) | Token::Less(_) | Token::LessEqual(_) => {
+            Ok((3, 4))
+        }
+        t => Err(ParserError::new(format!(
+            "invalid infix operator {} on line {}",
+            t,
+            t.line()
+        ))),
     }
 }
 
