@@ -30,7 +30,7 @@ impl Parser {
 
     fn parse_expr(&mut self, min_bp: u8) -> Result<Expr, ParserError> {
         let mut lhs = match self.next() {
-            op if op.is_unary_op() => {
+            op if op.is_prefix_op() => {
                 let (_, bp) = prefix_binding_power(&op)?;
                 let lhs = self.parse_expr(bp)?;
                 Ok(Expr::Unary(op, Box::new(lhs)))
@@ -61,8 +61,10 @@ impl Parser {
 
         loop {
             let op = match self.peek() {
-                t if t.is_binary_op() => t,
-                Token::Eof(_) | Token::RightParen(_) => break,
+                t if t.is_infix_op() => t,
+                // Not super fond if this approach here. I'm looking at what
+                // could be potential expression ends and break out.
+                Token::Eof(_) | Token::RightParen(_) | Token::Colon(_) => break,
                 t => {
                     return Err(ParserError::new(format!(
                         "expected an operator, but got \"{}\" on line {}",
@@ -79,8 +81,22 @@ impl Parser {
 
             // consume the operator we peeked at the beginning of the loop
             self.next();
-            let rhs = self.parse_expr(r_bp)?;
-            lhs = Expr::Binary(Box::new(lhs), op.clone(), Box::new(rhs))
+
+            if let Token::Query(_) = op {
+                let conclusion = self.parse_expr(0)?;
+                if let Token::Colon(_) = self.next() {
+                    let alternate = self.parse_expr(r_bp)?;
+                    lhs = Expr::Ternary(Box::new(lhs), Box::new(conclusion), Box::new(alternate));
+                } else {
+                    return Err(ParserError::new(format!(
+                        "missing \":\" in ternary on line {}",
+                        op.line()
+                    )));
+                }
+            } else {
+                let rhs = self.parse_expr(r_bp)?;
+                lhs = Expr::Binary(Box::new(lhs), op.clone(), Box::new(rhs))
+            }
         }
 
         Ok(lhs)
@@ -98,14 +114,15 @@ impl Parser {
 fn infix_binding_power(op: &Token) -> Result<(u8, u8), ParserError> {
     match op {
         Token::Comma(_) => Ok((1, 2)),
-        Token::BangEqual(_) | Token::EqualEqual(_) => Ok((2, 3)),
+        Token::Query(_) => Ok((4, 3)),
+        Token::BangEqual(_) | Token::EqualEqual(_) => Ok((4, 5)),
         Token::Greater(_) | Token::GreaterEqual(_) | Token::Less(_) | Token::LessEqual(_) => {
-            Ok((4, 5))
+            Ok((6, 7))
         }
-        Token::Minus(_) => Ok((6, 7)),
-        Token::Plus(_) => Ok((6, 7)),
-        Token::Slash(_) => Ok((8, 9)),
-        Token::Star(_) => Ok((8, 9)),
+        Token::Minus(_) => Ok((8, 9)),
+        Token::Plus(_) => Ok((8, 9)),
+        Token::Slash(_) => Ok((10, 11)),
+        Token::Star(_) => Ok((10, 11)),
         t => Err(ParserError::new(format!(
             "invalid infix operator {} on line {}",
             t,
@@ -131,7 +148,8 @@ mod tests {
     use crate::ast;
 
     fn sexp(input: &str) -> String {
-        ast::sexp(&Parser::parse_expr_from_str(input).unwrap())
+        let ast = Parser::parse_expr_from_str(input).unwrap();
+        ast::sexp(&ast)
     }
 
     #[test]
@@ -185,5 +203,18 @@ mod tests {
     #[test]
     fn test_comma_expr() {
         assert_eq!("(, (+ 1 3) (+ 2 (/ 3 2)))", sexp("1 + 3, 2 + 3 / 2"));
+    }
+
+    #[test]
+    fn test_ternary_expr() {
+        assert_eq!(
+            "(? (> (+ 3 2) 1) (/ 4 2) 42)",
+            sexp("3 + 2 > 1 ? 4 / 2 : 42")
+        );
+    }
+
+    #[test]
+    fn test_ternary_expr_precedence() {
+        assert_eq!("(? 1 2 (? 3 4 5))", sexp("1 ? 2 : 3 ? 4 : 5"));
     }
 }

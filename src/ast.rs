@@ -22,6 +22,7 @@ pub enum Expr {
     Grouping(Box<Expr>),
     Unary(Token, Box<Expr>),
     Binary(Box<Expr>, Token, Box<Expr>),
+    Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
 }
 
 pub fn sexp(e: &Expr) -> String {
@@ -33,6 +34,12 @@ pub fn sexp(e: &Expr) -> String {
         Expr::Grouping(e) => format!("(group {})", sexp(e)),
         Expr::Unary(op, e) => format!("({} {})", op, sexp(e)),
         Expr::Binary(lhs, op, rhs) => format!("({} {} {})", op, sexp(lhs), sexp(rhs)),
+        Expr::Ternary(condition, conclusion, alternate) => format!(
+            "(? {} {} {})",
+            sexp(condition),
+            sexp(conclusion),
+            sexp(alternate)
+        ),
     }
 }
 
@@ -46,6 +53,12 @@ fn rpn(e: &Expr) -> String {
         Expr::Grouping(e) => rpn(e),
         Expr::Unary(op, e) => format!("{} {}", rpn(e), op),
         Expr::Binary(lhs, op, rhs) => format!("{} {} {}", rpn(lhs), rpn(rhs), op),
+        Expr::Ternary(condition, conclusion, alternate) => format!(
+            "{} ? {} : {}",
+            rpn(condition),
+            rpn(conclusion),
+            rpn(alternate)
+        ),
     }
 }
 

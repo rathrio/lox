@@ -14,6 +14,8 @@ pub enum Token {
     Minus(Line),
     Plus(Line),
     Semicolon(Line),
+    Colon(Line),
+    Query(Line),
     Slash(Line),
     Star(Line),
 
@@ -56,7 +58,7 @@ pub enum Token {
 }
 
 impl Token {
-    pub fn is_binary_op(&self) -> bool {
+    pub fn is_infix_op(&self) -> bool {
         matches!(
             self,
             Token::Minus(_)
@@ -72,10 +74,11 @@ impl Token {
                 | Token::And(_)
                 | Token::Or(_)
                 | Token::Comma(_)
+                | Token::Query(_)
         )
     }
 
-    pub fn is_unary_op(&self) -> bool {
+    pub fn is_prefix_op(&self) -> bool {
         matches!(self, Token::Bang(_) | Token::Minus(_))
     }
 
@@ -90,6 +93,7 @@ impl Token {
             | Token::Dot(line)
             | Token::Minus(line)
             | Token::Plus(line)
+            | Token::Colon(line)
             | Token::Semicolon(line)
             | Token::Slash(line)
             | Token::Star(line)
@@ -121,6 +125,7 @@ impl Token {
             | Token::Var(line)
             | Token::While(line)
             | Token::Eof(line)
+            | Token::Query(line)
             | Token::Error(line, _) => *line,
         }
     }
@@ -168,6 +173,8 @@ impl Display for Token {
             Token::Var(_) => write!(f, "var"),
             Token::While(_) => write!(f, "while"),
             Token::Eof(_) => write!(f, "EOF"),
+            Token::Colon(_) => write!(f, ":"),
+            Token::Query(_) => write!(f, "?"),
             Token::Error(_, _) => Ok(()),
         }
     }
@@ -218,6 +225,8 @@ impl Lexer {
             '-' => self.tokens.push(Token::Minus(self.line)),
             '+' => self.tokens.push(Token::Plus(self.line)),
             ';' => self.tokens.push(Token::Semicolon(self.line)),
+            ':' => self.tokens.push(Token::Colon(self.line)),
+            '?' => self.tokens.push(Token::Query(self.line)),
             '*' => self.tokens.push(Token::Star(self.line)),
             '!' => {
                 if self.is_next('=') {
