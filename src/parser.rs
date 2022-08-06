@@ -65,10 +65,12 @@ impl Parser {
 
 fn infix_binding_power(op: &Token) -> (u8, u8) {
     match op {
-        Token::Minus(_) => (1, 2),
-        Token::Plus(_) => (1, 2),
-        Token::Slash(_) => (3, 4),
-        Token::Star(_) => (3, 4),
+        Token::Minus(_) => (5, 6),
+        Token::Plus(_) => (5, 6),
+        Token::Slash(_) => (7, 8),
+        Token::Star(_) => (7, 8),
+        Token::BangEqual(_) | Token::EqualEqual(_) => (1, 2),
+        Token::Greater(_) | Token::GreaterEqual(_) | Token::Less(_) | Token::LessEqual(_) => (3, 4),
         t => panic!("invalid infix operator {:?}", t),
     }
 }
@@ -95,6 +97,8 @@ mod tests {
     fn test_binary_expr() {
         assert_eq!("(+ 1 2)", sexp("1 + 2"));
         assert_eq!("(- (+ 1 2) 3)", sexp("1 + 2 - 3"));
+        assert_eq!("(<= 1 42)", sexp("1 <= 42"));
+        assert_eq!("(== 3 1)", sexp("3 == 1"));
     }
 
     #[test]
@@ -110,5 +114,6 @@ mod tests {
         assert_eq!("(+ 1 (/ 2 3))", sexp("1 + 2 / 3"));
         assert_eq!("(+ (+ 1 (* 2 3)) 4)", sexp("1 + 2 * 3 + 4"));
         assert_eq!("(+ (/ 1 2) 3)", sexp("1 / 2 + 3"));
+        assert_eq!("(!= (> 1 3) (<= 23 2))", sexp("1 > 3 != 23 <= 2"));
     }
 }
