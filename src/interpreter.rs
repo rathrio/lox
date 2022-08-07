@@ -1,11 +1,11 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 use crate::{
     ast::{Expr, Program, Stmt},
     lexer::{Line, Token},
 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Value {
     Number(f64),
     Str(String),
@@ -59,14 +59,41 @@ impl RuntimeError {
     }
 }
 
-fn error(report: impl Into<String>, line: Line) -> Result<Value, RuntimeError> {
+fn error<T>(report: impl Into<String>, line: Line) -> Result<T, RuntimeError> {
     Err(RuntimeError::new(report, line))
 }
 
-pub struct Interpreter;
+#[derive(Debug, Default)]
+pub struct Environment {
+    pub values: HashMap<String, Value>,
+}
+
+impl Environment {
+    pub fn define(&mut self, name: String, value: Value) {
+        self.values.insert(name, value);
+    }
+
+    pub fn get(&self, name: String) -> Result<Value, String> {
+        match self.values.get(&name) {
+            Some(v) => Ok(v.clone()),
+            None => Err(format!("undefined variable \"{}\"", &name)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Interpreter {
+    environment: Environment,
+}
 
 impl Interpreter {
-    pub fn interpret(&self, program: &Program) -> Result<(), RuntimeError> {
+    pub fn new() -> Self {
+        Self {
+            environment: Environment::default(),
+        }
+    }
+
+    pub fn interpret(&mut self, program: &Program) -> Result<(), RuntimeError> {
         for stmt in &program.stmts {
             self.interpret_stmt(stmt)?;
         }
@@ -74,7 +101,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn interpret_stmt(&self, stmt: &Stmt) -> Result<(), RuntimeError> {
+    fn interpret_stmt(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
         match stmt {
             Stmt::Expr(expr) => {
                 self.interpret_expr(expr)?;
@@ -82,7 +109,14 @@ impl Interpreter {
             Stmt::Print(expr) => {
                 self.interpret_print(expr)?;
             }
-            Stmt::Var(name, expr) => todo!(),
+            Stmt::Var(name, expr) => {
+                if let Token::Identifier(_, name) = name {
+                    let init_value = self.interpret_expr(expr)?;
+                    self.environment.define(name.into(), init_value);
+                } else {
+                    return error("invalid variable token", name.line());
+                }
+            }
         };
 
         Ok(())
@@ -106,7 +140,10 @@ impl Interpreter {
             Expr::Ternary(condition, conclusion, alternate) => {
                 self.interpret_ternary_expr(condition, conclusion, alternate)
             }
-            Expr::Variable(name) => todo!(),
+            Expr::Variable(name) => self
+                .environment
+                .get(name.into())
+                .map_err(|msg| RuntimeError::new(msg, 9999999)), // TODO: Each node should know about their span...
         }
     }
 
@@ -207,6 +244,12 @@ impl Interpreter {
     }
 }
 
+impl Default for Interpreter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::parser::Parser;
@@ -215,7 +258,7 @@ mod tests {
 
     fn interpret_expr(input: &str) -> Result<Value, RuntimeError> {
         let ast = Parser::parse_expr_str(input).expect("syntax error");
-        let interpreter = Interpreter {};
+        let interpreter = Interpreter::new();
         interpreter.interpret_expr(&ast)
     }
 
@@ -295,14 +338,23 @@ mod tests {
         assert_eq!(Value::Bool(false), interpret_expr("nil == false").unwrap());
         assert_eq!(Value::Bool(true), interpret_expr("nil != false").unwrap());
 
-        assert_eq!(Value::Bool(true), interpret_expr("\"hi\" == \"hi\"").unwrap());
-        assert_eq!(Value::Bool(false), interpret_expr("\"hi\" != \"hi\"").unwrap());
+        assert_eq!(
+            Value::Bool(true),
+            interpret_expr("\"hi\" == \"hi\"").unwrap()
+        );
+        assert_eq!(
+            Value::Bool(false),
+            interpret_expr("\"hi\" != \"hi\"").unwrap()
+        );
 
         assert_eq!(
             Value::Bool(false),
             interpret_expr("\"there\" == \"hi\"").unwrap()
         );
-        assert_eq!(Value::Bool(true), interpret_expr("\"there\" != \"hi\"").unwrap());
+        assert_eq!(
+            Value::Bool(true),
+            interpret_expr("\"there\" != \"hi\"").unwrap()
+        );
 
         assert_eq!(Value::Bool(true), interpret_expr("nil == nil").unwrap());
         assert_eq!(Value::Bool(false), interpret_expr("nil != nil").unwrap());
@@ -332,6 +384,9 @@ mod tests {
 
     #[test]
     fn test_comma() {
-        assert_eq!(Value::Number(92.0), interpret_expr("1 == 1, 4 * 23").unwrap());
+        assert_eq!(
+            Value::Number(92.0),
+            interpret_expr("1 == 1, 4 * 23").unwrap()
+        );
     }
 }

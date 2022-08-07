@@ -9,9 +9,7 @@ pub struct Args {
     file: Option<String>,
 }
 
-fn run(script: String) {
-    let interpreter = Interpreter {};
-
+fn run(interpreter: &mut Interpreter, script: String) {
     match Parser::parse_str(&script) {
         Ok(program) => match interpreter.interpret(&program) {
             Ok(_) => (),
@@ -23,10 +21,13 @@ fn run(script: String) {
 
 fn run_file(path: &str) {
     let script = std::fs::read_to_string(path).unwrap();
-    run(script);
+    let mut interpreter = Interpreter::new();
+    run(&mut interpreter, script);
 }
 
 fn run_prompt() {
+    let mut interpreter = Interpreter::new();
+
     loop {
         print!("> ");
         stdout().flush().unwrap();
@@ -34,7 +35,7 @@ fn run_prompt() {
         std::io::stdin()
             .read_line(&mut buffer)
             .expect("failed to read string");
-        run(buffer);
+        run(&mut interpreter, buffer);
     }
 }
 
