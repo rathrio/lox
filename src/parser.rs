@@ -1,5 +1,5 @@
 use crate::{
-    ast::Expr,
+    ast::{Expr, Program, Stmt},
     lexer::{Lexer, Token},
 };
 
@@ -21,11 +21,62 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn parse_expr_from_str(input: &str) -> Result<Expr, ParserError> {
+    pub fn new(input: &str) -> Self {
         let mut s = Lexer::new(input.to_string());
         let tokens = s.lex_tokens();
-        let mut parser = Self { tokens };
-        parser.parse_expr(0)
+        Self { tokens }
+    }
+
+    pub fn parse_str(input: &str) -> Result<Program, ParserError> {
+        Self::new(input).parse_program()
+    }
+
+    pub fn parse_expr_str(input: &str) -> Result<Expr, ParserError> {
+        Self::new(input).parse_expr(0)
+    }
+
+    fn parse_program(&mut self) -> Result<Program, ParserError> {
+        let mut stmts = Vec::new();
+
+        while !self.peek().is_eof() {
+            stmts.push(self.parse_stmt()?);
+        }
+
+        Ok(Program { stmts })
+    }
+
+    fn parse_stmt(&mut self) -> Result<Stmt, ParserError> {
+        match self.peek() {
+            Token::Print(_) => self.parse_print_stmt(),
+            _ => self.parse_expr_stmt(),
+        }
+    }
+
+    fn parse_print_stmt(&mut self) -> Result<Stmt, ParserError> {
+        // consume print token
+        self.next();
+
+        let expr = self.parse_expr(0)?;
+        match self.next() {
+            Token::Semicolon(_) => Ok(Stmt::Print(expr)),
+            t => Err(ParserError::new(format!(
+                "expected a \";\", but got \"{}\" on line {}",
+                t,
+                t.line()
+            ))),
+        }
+    }
+
+    fn parse_expr_stmt(&mut self) -> Result<Stmt, ParserError> {
+        let expr = self.parse_expr(0)?;
+        match self.next() {
+            Token::Semicolon(_) => Ok(Stmt::Expr(expr)),
+            t => Err(ParserError::new(format!(
+                "expected a \";\", but got \"{}\" on line {}",
+                t,
+                t.line()
+            ))),
+        }
     }
 
     fn parse_expr(&mut self, min_bp: u8) -> Result<Expr, ParserError> {
@@ -77,7 +128,9 @@ impl Parser {
                 t if t.is_infix_op() => t,
                 // Not super fond if this approach here. I'm looking at what
                 // could be potential expression ends and break out.
-                Token::Eof(_) | Token::RightParen(_) | Token::Colon(_) => break,
+                Token::Eof(_) | Token::RightParen(_) | Token::Colon(_) | Token::Semicolon(_) => {
+                    break
+                }
                 t => {
                     return Err(ParserError::new(format!(
                         "expected an operator, but got \"{}\" on line {}",
@@ -160,92 +213,111 @@ mod tests {
     use super::*;
     use crate::ast;
 
-    fn parse_expr(input: &str) -> Result<Expr, ParserError> {
-        Parser::parse_expr_from_str(input)
+    fn parse(input: &str) -> Result<Program, ParserError> {
+        Parser::parse_str(input)
     }
 
     fn sexp(input: &str) -> String {
+        let program = parse(input).unwrap();
+        ast::sexp(&program)
+    }
+
+    fn parse_expr(input: &str) -> Result<Expr, ParserError> {
+        Parser::parse_expr_str(input)
+    }
+
+    fn sexp_expr(input: &str) -> String {
         let expr = parse_expr(input).unwrap();
-        ast::sexp(&expr)
+        ast::sexp_expr(&expr)
     }
 
     #[test]
     fn test_literals() {
-        assert_eq!("42", sexp("42"));
-        assert_eq!("\"spongebob\"", sexp("\"spongebob\""));
-        assert_eq!("true", sexp("true"));
-        assert_eq!("false", sexp("false"));
-        assert_eq!("nil", sexp("nil"));
+        assert_eq!("42", sexp_expr("42"));
+        assert_eq!("\"spongebob\"", sexp_expr("\"spongebob\""));
+        assert_eq!("true", sexp_expr("true"));
+        assert_eq!("false", sexp_expr("false"));
+        assert_eq!("nil", sexp_expr("nil"));
     }
 
     #[ignore] // TODO as soon as identifiers are supported
     #[test]
     fn test_identifier() {
-        assert_eq!("(+ a b)", sexp("a + b"));
+        assert_eq!("(+ a b)", sexp_expr("a + b"));
     }
 
     #[test]
     fn test_unary() {
-        assert_eq!("(! false)", sexp("!false"));
+        assert_eq!("(! false)", sexp_expr("!false"));
     }
 
     #[test]
     fn test_unary_precedence() {
-        assert_eq!("(== (! false) (> 2 3))", sexp("!false == 2 > 3"));
+        assert_eq!("(== (! false) (> 2 3))", sexp_expr("!false == 2 > 3"));
     }
 
     #[test]
     fn test_binary_expr() {
-        assert_eq!("(+ 1 2)", sexp("1 + 2"));
-        assert_eq!("(- (+ 1 2) 3)", sexp("1 + 2 - 3"));
-        assert_eq!("(<= 1 42)", sexp("1 <= 42"));
-        assert_eq!("(== 3 1)", sexp("3 == 1"));
+        assert_eq!("(+ 1 2)", sexp_expr("1 + 2"));
+        assert_eq!("(- (+ 1 2) 3)", sexp_expr("1 + 2 - 3"));
+        assert_eq!("(<= 1 42)", sexp_expr("1 <= 42"));
+        assert_eq!("(== 3 1)", sexp_expr("3 == 1"));
     }
 
     #[test]
     fn test_grouping() {
-        assert_eq!("(* (group (+ 1 2)) 3)", sexp("(1 + 2) * 3"));
-        assert_eq!("(group (group (group (+ 1 2))))", sexp("(((1 + 2)))"));
+        assert_eq!("(* (group (+ 1 2)) 3)", sexp_expr("(1 + 2) * 3"));
+        assert_eq!("(group (group (group (+ 1 2))))", sexp_expr("(((1 + 2)))"));
     }
 
     #[test]
     fn test_binary_expr_precedence() {
-        assert_eq!("(+ 1 (* 2 3))", sexp("1 + 2 * 3"));
-        assert_eq!("(+ 1 (/ 2 3))", sexp("1 + 2 / 3"));
-        assert_eq!("(+ (+ 1 (* 2 3)) 4)", sexp("1 + 2 * 3 + 4"));
-        assert_eq!("(+ (/ 1 2) 3)", sexp("1 / 2 + 3"));
-        assert_eq!("(!= (> 1 3) (<= 23 2))", sexp("1 > 3 != 23 <= 2"));
+        assert_eq!("(+ 1 (* 2 3))", sexp_expr("1 + 2 * 3"));
+        assert_eq!("(+ 1 (/ 2 3))", sexp_expr("1 + 2 / 3"));
+        assert_eq!("(+ (+ 1 (* 2 3)) 4)", sexp_expr("1 + 2 * 3 + 4"));
+        assert_eq!("(+ (/ 1 2) 3)", sexp_expr("1 / 2 + 3"));
+        assert_eq!("(!= (> 1 3) (<= 23 2))", sexp_expr("1 > 3 != 23 <= 2"));
     }
 
     #[test]
     fn test_comma_expr() {
-        assert_eq!("(, (+ 1 3) (+ 2 (/ 3 2)))", sexp("1 + 3, 2 + 3 / 2"));
+        assert_eq!("(, (+ 1 3) (+ 2 (/ 3 2)))", sexp_expr("1 + 3, 2 + 3 / 2"));
     }
 
     #[test]
     fn test_ternary_expr() {
         assert_eq!(
             "(? (> (+ 3 2) 1) (/ 4 2) 42)",
-            sexp("3 + 2 > 1 ? 4 / 2 : 42")
+            sexp_expr("3 + 2 > 1 ? 4 / 2 : 42")
         );
     }
 
     #[test]
     fn test_ternary_expr_precedence() {
-        assert_eq!("(? 1 2 (? 3 4 5))", sexp("1 ? 2 : 3 ? 4 : 5"));
+        assert_eq!("(? 1 2 (? 3 4 5))", sexp_expr("1 ? 2 : 3 ? 4 : 5"));
     }
 
     #[test]
-    fn test_errors() {
+    fn test_expr_errors() {
         assert!(parse_expr("1 +").is_err());
         assert!(parse_expr("(42").is_err());
     }
 
     #[test]
-    fn test_binary_lhs_missin_error() {
+    fn test_binary_lhs_missing_error() {
         match parse_expr(" / 34") {
             Ok(_) => panic!("this parse should not succeed"),
             Err(e) => assert!(e.report.contains("LHS")),
         };
+    }
+
+    #[test]
+    fn test_program() {
+        assert_eq!("(print \"Hello World!\")", sexp("print \"Hello World!\";"));
+
+        assert_eq!(
+            "(+ 1 2) (print \"Hello World!\")",
+            sexp("1 + 2; print \"Hello World!\";")
+        );
     }
 }

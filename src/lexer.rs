@@ -82,6 +82,10 @@ impl Token {
         matches!(self, Token::Bang(_) | Token::Minus(_))
     }
 
+    pub fn is_eof(&self) -> bool {
+        matches!(self, Token::Eof(_))
+    }
+
     // TODO: there must be a more concise way to do this...
     pub fn line(&self) -> Line {
         match self {

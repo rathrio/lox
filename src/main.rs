@@ -12,15 +12,13 @@ pub struct Args {
 fn run(script: String) {
     let interpreter = Interpreter {};
 
-    let output = match Parser::parse_expr_from_str(&script) {
-        Ok(ast) => match interpreter.interpret(&ast) {
-            Ok(value) => format!("{}", value),
-            Err(e) => format!("error: {}", e.report),
+    match Parser::parse_str(&script) {
+        Ok(program) => match interpreter.interpret(&program) {
+            Ok(_) => (),
+            Err(error) => println!("runtime error: {}", error.report),
         },
-        Err(error) => error.report,
+        Err(error) => println!("syntax error: {}", error.report),
     };
-
-    println!("{}", output);
 }
 
 fn run_file(path: &str) {
