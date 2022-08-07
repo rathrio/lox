@@ -48,7 +48,7 @@ impl Parser {
                     op.line()
                 )))
             }
-            Token::Number(_, number) => Ok(Expr::Number(number as i64)),
+            Token::Number(_, number) => Ok(Expr::Number(number)),
             Token::String(_, string) => Ok(Expr::Str(string)),
             Token::True(_) => Ok(Expr::Bool(true)),
             Token::False(_) => Ok(Expr::Bool(false)),

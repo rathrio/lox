@@ -15,7 +15,7 @@ use crate::lexer::Token;
 /// ```
 #[derive(Debug)]
 pub enum Expr {
-    Number(i64),
+    Number(f64),
     Str(String),
     Bool(bool),
     Nil,
@@ -68,10 +68,10 @@ mod tests {
 
     #[test]
     fn test_sexp() {
-        let lhs = Expr::Number(42);
+        let lhs = Expr::Number(42.0);
 
-        let add_lhs = Expr::Number(1);
-        let add_rhs = Expr::Number(2);
+        let add_lhs = Expr::Number(1.0);
+        let add_rhs = Expr::Number(2.0);
         let add = Expr::Binary(Box::new(add_lhs), Token::Plus(1), Box::new(add_rhs));
 
         let rhs = Expr::Grouping(Box::new(add));
