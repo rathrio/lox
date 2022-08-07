@@ -1,3 +1,5 @@
+# Representing Code
+
 1. Earlier, I said that the `|`, `*`, and `+` forms we added to our grammar
    metasyntax were just syntactic sugar. Take this grammar:
 

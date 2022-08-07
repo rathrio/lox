@@ -131,7 +131,13 @@ impl Interpreter {
                 _ => error("binary \"*\" can only be applied to numbers", op.line()),
             },
             Token::Slash(_) => match (left, right) {
-                (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l / r)),
+                (Value::Number(l), Value::Number(r)) => {
+                    if r == 0.0 {
+                        error("divided by 0", op.line())
+                    } else {
+                        Ok(Value::Number(l / r))
+                    }
+                }
                 _ => error("binary \"/\" can only be applied to numbers", op.line()),
             },
             Token::EqualEqual(_) => Ok(Value::Bool(left.equals(&right))),
@@ -239,6 +245,11 @@ mod tests {
             interpret("2 / 3").unwrap()
         );
         assert!(interpret("\"chabis\" / 23").is_err());
+    }
+
+    #[test]
+    fn test_div_by_zero() {
+        assert!(interpret("42 / 0").is_err());
     }
 
     #[test]
