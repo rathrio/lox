@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::{
     ast::Expr,
     lexer::{Line, Token},
@@ -27,6 +29,17 @@ impl Value {
             Value::Bool(b) => *b,
             Value::Number(_) | Value::Str(_) => true,
             Value::Nil => false,
+        }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Number(n) => n.fmt(f),
+            Value::Str(s) => write!(f, "{:?}", s),
+            Value::Bool(b) => b.fmt(f),
+            Value::Nil => write!(f, "nil"),
         }
     }
 }

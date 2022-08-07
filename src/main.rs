@@ -1,5 +1,5 @@
 use clap::Parser as ClapParser;
-use lox::ast;
+use lox::interpreter::Interpreter;
 use lox::parser::Parser;
 use std::io::{stdout, Write};
 
@@ -10,8 +10,13 @@ pub struct Args {
 }
 
 fn run(script: String) {
+    let interpreter = Interpreter {};
+
     let output = match Parser::parse_expr_from_str(&script) {
-        Ok(ast) => ast::sexp(&ast),
+        Ok(ast) => match interpreter.interpret(&ast) {
+            Ok(value) => format!("{}", value),
+            Err(e) => format!("error: {}", e.report),
+        },
         Err(error) => error.report,
     };
 
