@@ -1,7 +1,12 @@
 use crate::lexer::Token;
 
 /// ```ebnf
-/// program        → statement* EOF ;
+/// program        → declaration* EOF ;
+///
+/// declaration    → varDecl
+///                | statement ;
+///
+/// varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
 ///
 /// statement      → exprStmt
 ///                | printStmt ;
@@ -19,12 +24,12 @@ pub enum Stmt {
 }
 
 /// ```ebnf
-/// expression     → literal
+/// expression     → primary
 ///                | unary
 ///                | binary
 ///                | grouping ;
 ///
-/// literal        → NUMBER | STRING | "true" | "false" | "nil" ;
+/// primary        → NUMBER | STRING | "true" | "false" | "nil" | IDENTIFIER ;
 /// grouping       → "(" expression ")" ;
 /// unary          → ( "-" | "!" ) expression ;
 /// binary         → expression operator expression ;
