@@ -82,6 +82,7 @@ impl Interpreter {
             Stmt::Print(expr) => {
                 self.interpret_print(expr)?;
             }
+            Stmt::Var(name, expr) => todo!(),
         };
 
         Ok(())
@@ -105,6 +106,7 @@ impl Interpreter {
             Expr::Ternary(condition, conclusion, alternate) => {
                 self.interpret_ternary_expr(condition, conclusion, alternate)
             }
+            Expr::Variable(name) => todo!(),
         }
     }
 

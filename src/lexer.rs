@@ -86,6 +86,10 @@ impl Token {
         matches!(self, Token::Eof(_))
     }
 
+    pub fn is_identifier(&self) -> bool {
+        matches!(self, Token::Identifier(_, _))
+    }
+
     // TODO: there must be a more concise way to do this...
     pub fn line(&self) -> Line {
         match self {

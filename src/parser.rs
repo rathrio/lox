@@ -1,19 +1,25 @@
 use crate::{
     ast::{Expr, Program, Stmt},
-    lexer::{Lexer, Token},
+    lexer::{Lexer, Line, Token},
 };
 
 #[derive(Debug)]
 pub struct ParserError {
     pub report: String,
+    pub line: Line,
 }
 
 impl ParserError {
-    fn new(report: impl Into<String>) -> Self {
+    fn new(report: impl Into<String>, line: Line) -> Self {
         Self {
             report: report.into(),
+            line,
         }
     }
+}
+
+fn error<T>(report: impl Into<String>, line: Line) -> Result<T, ParserError> {
+    Err(ParserError::new(report, line))
 }
 
 pub struct Parser {
@@ -39,10 +45,34 @@ impl Parser {
         let mut stmts = Vec::new();
 
         while !self.peek().is_eof() {
-            stmts.push(self.parse_stmt()?);
+            stmts.push(self.parse_decl()?);
         }
 
         Ok(Program { stmts })
+    }
+
+    fn parse_decl(&mut self) -> Result<Stmt, ParserError> {
+        match self.peek() {
+            Token::Var(_) => self.parse_var_decl(),
+            _ => self.parse_stmt(),
+        }
+    }
+
+    fn parse_var_decl(&mut self) -> Result<Stmt, ParserError> {
+        // consume var token
+        self.next();
+
+        let id = self.next();
+        let eq = self.next();
+        let decl = match (&id, &eq) {
+            (Token::Identifier(_, _), Token::Equal(_)) => Ok(Stmt::Var(id, self.parse_expr(0)?)),
+            (t, _) => error("invalid variable declaration", t.line()),
+        };
+
+        match self.next() {
+            Token::Semicolon(_) => decl,
+            t => error(format!("expected a \";\", but got \"{}\"", t), t.line()),
+        }
     }
 
     fn parse_stmt(&mut self) -> Result<Stmt, ParserError> {
@@ -59,11 +89,7 @@ impl Parser {
         let expr = self.parse_expr(0)?;
         match self.next() {
             Token::Semicolon(_) => Ok(Stmt::Print(expr)),
-            t => Err(ParserError::new(format!(
-                "expected a \";\", but got \"{}\" on line {}",
-                t,
-                t.line()
-            ))),
+            t => error(format!("expected a \";\", but got \"{}\"", t), t.line()),
         }
     }
 
@@ -71,11 +97,7 @@ impl Parser {
         let expr = self.parse_expr(0)?;
         match self.next() {
             Token::Semicolon(_) => Ok(Stmt::Expr(expr)),
-            t => Err(ParserError::new(format!(
-                "expected a \";\", but got \"{}\" on line {}",
-                t,
-                t.line()
-            ))),
+            t => error(format!("expected a \";\", but got \"{}\"", t), t.line()),
         }
     }
 
@@ -93,34 +115,29 @@ impl Parser {
                     self.parse_expr(r_bp)?;
                 }
 
-                Err(ParserError::new(format!(
-                    "LHS of binary operation \"{}\" is missing on line {}",
-                    op,
-                    op.line()
-                )))
+                error(
+                    format!("LHS of binary operation \"{}\" is missing", op),
+                    op.line(),
+                )
             }
             Token::Number(_, number) => Ok(Expr::Number(number)),
             Token::String(_, string) => Ok(Expr::Str(string)),
             Token::True(_) => Ok(Expr::Bool(true)),
             Token::False(_) => Ok(Expr::Bool(false)),
             Token::Nil(_) => Ok(Expr::Nil),
+            Token::Identifier(_, name) => Ok(Expr::Variable(name)),
             Token::LeftParen(_) => {
                 let lhs = self.parse_expr(0)?;
 
                 match self.next() {
                     Token::RightParen(_) => Ok(Expr::Grouping(Box::new(lhs))),
-                    t => Err(ParserError::new(format!(
-                        "expected a \")\", but got \"{}\" on line {}",
-                        t,
-                        t.line()
-                    ))),
+                    t => error(format!("expected a \")\", but got \"{}\"", t), t.line()),
                 }
             }
-            t => Err(ParserError::new(format!(
-                "invalid start of expression with \"{}\" on line {}",
-                t,
-                t.line()
-            ))),
+            t => error(
+                format!("invalid start of expression with \"{}\"", t),
+                t.line(),
+            ),
         }?;
 
         loop {
@@ -131,13 +148,7 @@ impl Parser {
                 Token::Eof(_) | Token::RightParen(_) | Token::Colon(_) | Token::Semicolon(_) => {
                     break
                 }
-                t => {
-                    return Err(ParserError::new(format!(
-                        "expected an operator, but got \"{}\" on line {}",
-                        t,
-                        t.line()
-                    )))
-                }
+                t => return error(format!("expected an operator, but got \"{}\"", t), t.line()),
             };
 
             let (l_bp, r_bp) = infix_binding_power(&op)?;
@@ -154,10 +165,7 @@ impl Parser {
                     let alternate = self.parse_expr(r_bp)?;
                     lhs = Expr::Ternary(Box::new(lhs), Box::new(conclusion), Box::new(alternate));
                 } else {
-                    return Err(ParserError::new(format!(
-                        "missing \":\" in ternary on line {}",
-                        op.line()
-                    )));
+                    return error("missing \":\" in ternary", op.line());
                 }
             } else {
                 let rhs = self.parse_expr(r_bp)?;
@@ -189,22 +197,14 @@ fn infix_binding_power(op: &Token) -> Result<(u8, u8), ParserError> {
         Token::Plus(_) => Ok((8, 9)),
         Token::Slash(_) => Ok((10, 11)),
         Token::Star(_) => Ok((10, 11)),
-        t => Err(ParserError::new(format!(
-            "invalid infix operator {} on line {}",
-            t,
-            t.line()
-        ))),
+        t => error(format!("invalid infix operator {}", t), t.line()),
     }
 }
 
 fn prefix_binding_power(op: &Token) -> Result<((), u8), ParserError> {
     match op {
         Token::Minus(_) | Token::Bang(_) => Ok(((), 10)),
-        t => Err(ParserError::new(format!(
-            "invalid prefix operator {} on line {}",
-            t,
-            t.line()
-        ))),
+        t => error(format!("invalid prefix operator {}", t), t.line()),
     }
 }
 
@@ -240,7 +240,6 @@ mod tests {
         assert_eq!("nil", sexp_expr("nil"));
     }
 
-    #[ignore] // TODO as soon as identifiers are supported
     #[test]
     fn test_identifier() {
         assert_eq!("(+ a b)", sexp_expr("a + b"));
@@ -318,6 +317,15 @@ mod tests {
         assert_eq!(
             "(+ 1 2) (print \"Hello World!\")",
             sexp("1 + 2; print \"Hello World!\";")
+        );
+    }
+
+    #[test]
+    fn test_declarations() {
+        assert_eq!("(var a 42)", sexp("var a = 42;"));
+        assert_eq!(
+            "(var name (+ \"hi \" \"tadeus\"))",
+            sexp("var name = \"hi \" + \"tadeus\";")
         );
     }
 }

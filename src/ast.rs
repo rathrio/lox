@@ -1,19 +1,5 @@
 use crate::lexer::Token;
 
-/// ```ebnf
-/// program        → declaration* EOF ;
-///
-/// declaration    → varDecl
-///                | statement ;
-///
-/// varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
-///
-/// statement      → exprStmt
-///                | printStmt ;
-///
-/// exprStmt       → expression ";" ;
-/// printStmt      → "print" expression ";" ;
-/// ```
 pub struct Program {
     pub stmts: Vec<Stmt>,
 }
@@ -21,21 +7,9 @@ pub struct Program {
 pub enum Stmt {
     Expr(Expr),
     Print(Expr),
+    Var(Token, Expr),
 }
 
-/// ```ebnf
-/// expression     → primary
-///                | unary
-///                | binary
-///                | grouping ;
-///
-/// primary        → NUMBER | STRING | "true" | "false" | "nil" | IDENTIFIER ;
-/// grouping       → "(" expression ")" ;
-/// unary          → ( "-" | "!" ) expression ;
-/// binary         → expression operator expression ;
-/// operator       → "==" | "!=" | "<" | "<=" | ">" | ">="
-///                | "+"  | "-"  | "*" | "/" ;
-/// ```
 #[derive(Debug)]
 pub enum Expr {
     Number(f64),
@@ -46,6 +20,7 @@ pub enum Expr {
     Unary(Token, Box<Expr>),
     Binary(Box<Expr>, Token, Box<Expr>),
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
+    Variable(String),
 }
 
 pub fn sexp_expr(e: &Expr) -> String {
@@ -63,6 +38,7 @@ pub fn sexp_expr(e: &Expr) -> String {
             sexp_expr(conclusion),
             sexp_expr(alternate)
         ),
+        Expr::Variable(name) => name.into(),
     }
 }
 
@@ -70,6 +46,7 @@ pub fn sexp_stmt(s: &Stmt) -> String {
     match s {
         Stmt::Expr(e) => sexp_expr(e),
         Stmt::Print(e) => format!("(print {})", sexp_expr(e)),
+        Stmt::Var(id, e) => format!("(var {} {})", id, sexp_expr(e)),
     }
 }
 
@@ -91,6 +68,7 @@ fn rpn(e: &Expr) -> String {
         Expr::Grouping(e) => rpn(e),
         Expr::Unary(op, e) => format!("{} {}", rpn(e), op),
         Expr::Binary(lhs, op, rhs) => format!("{} {} {}", rpn(lhs), rpn(rhs), op),
+        Expr::Variable(name) => name.into(),
         Expr::Ternary(condition, conclusion, alternate) => format!(
             "{} ? {} : {}",
             rpn(condition),
