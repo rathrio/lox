@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, io::Write};
 
 use crate::{
     ast::{Expr, Program, Stmt},
@@ -82,14 +82,16 @@ impl Environment {
 }
 
 #[derive(Debug)]
-pub struct Interpreter {
+pub struct Interpreter<Out: Write> {
     environment: Environment,
+    out: Out,
 }
 
-impl Interpreter {
-    pub fn new() -> Self {
+impl<Out: Write> Interpreter<Out> {
+    pub fn new(out: Out) -> Self {
         Self {
             environment: Environment::default(),
+            out,
         }
     }
 
@@ -122,9 +124,12 @@ impl Interpreter {
         Ok(())
     }
 
-    fn interpret_print(&self, expr: &Expr) -> Result<(), RuntimeError> {
+    fn interpret_print(&mut self, expr: &Expr) -> Result<(), RuntimeError> {
         let value = self.interpret_expr(expr)?;
-        println!("{}", value);
+        self.out
+            .write_all(format!("{}\n", value).as_bytes())
+            .unwrap();
+        self.out.flush().unwrap();
         Ok(())
     }
 
@@ -244,22 +249,30 @@ impl Interpreter {
     }
 }
 
-impl Default for Interpreter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::parser::Parser;
+    use std::io;
 
     use super::*;
 
     fn interpret_expr(input: &str) -> Result<Value, RuntimeError> {
-        let ast = Parser::parse_expr_str(input).expect("syntax error");
-        let interpreter = Interpreter::new();
-        interpreter.interpret_expr(&ast)
+        let expr = Parser::parse_expr_str(input).expect("syntax error");
+        let interpreter = Interpreter::new(io::stdout());
+        interpreter.interpret_expr(&expr)
+    }
+
+    fn interpret(input: &str, out: &mut impl Write) -> Result<(), RuntimeError> {
+        let program = Parser::parse_str(input).expect("syntax error");
+        let mut interpreter = Interpreter::new(out);
+        interpreter.interpret(&program)
+    }
+
+    fn assert_outputted(out: Vec<u8>, expected_output: String) {
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            format!("{}\n", expected_output)
+        );
     }
 
     #[test]
@@ -388,5 +401,26 @@ mod tests {
             Value::Number(92.0),
             interpret_expr("1 == 1, 4 * 23").unwrap()
         );
+    }
+
+    #[test]
+    fn test_out() {
+        let mut out = Vec::new();
+        interpret("print \"Hello\" + \" World!\";", &mut out).unwrap();
+        assert_outputted(out, "\"Hello World!\"".into());
+    }
+
+    #[test]
+    fn test_variable_decls() {
+        let mut out = Vec::new();
+        interpret("var a = 1; var b = 2; print a + b;", &mut out).unwrap();
+        assert_outputted(out, "3".into());
+    }
+
+    #[test]
+    fn test_variable_decls_2() {
+        let mut out = Vec::new();
+        interpret("var a = 40; var a = a + 2; print a;", &mut out).unwrap();
+        assert_outputted(out, "42".into());
     }
 }

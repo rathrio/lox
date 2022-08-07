@@ -1,7 +1,7 @@
 use clap::Parser as ClapParser;
 use lox::interpreter::Interpreter;
 use lox::parser::Parser;
-use std::io::{stdout, Write};
+use std::io::{self, stdout, Write};
 
 #[derive(ClapParser, Debug, Default, Clone)]
 #[clap(author, version, about, long_about = None)]
@@ -9,7 +9,7 @@ pub struct Args {
     file: Option<String>,
 }
 
-fn run(interpreter: &mut Interpreter, script: String) {
+fn run(interpreter: &mut Interpreter<io::Stdout>, script: String) {
     match Parser::parse_str(&script) {
         Ok(program) => match interpreter.interpret(&program) {
             Ok(_) => (),
@@ -21,12 +21,12 @@ fn run(interpreter: &mut Interpreter, script: String) {
 
 fn run_file(path: &str) {
     let script = std::fs::read_to_string(path).unwrap();
-    let mut interpreter = Interpreter::new();
+    let mut interpreter = Interpreter::new(io::stdout());
     run(&mut interpreter, script);
 }
 
 fn run_prompt() {
-    let mut interpreter = Interpreter::new();
+    let mut interpreter = Interpreter::new(io::stdout());
 
     loop {
         print!("> ");
