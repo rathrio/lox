@@ -10,6 +10,7 @@ pub enum Stmt {
     Expr(Expr),
     Print(Expr),
     VarDecl(Token, Expr),
+    Block(Vec<Stmt>),
 }
 
 #[derive(Debug)]
@@ -51,6 +52,14 @@ pub fn sexp_stmt(s: &Stmt) -> String {
         Stmt::Expr(e) => sexp_expr(e),
         Stmt::Print(e) => format!("(print {})", sexp_expr(e)),
         Stmt::VarDecl(id, e) => format!("(var {} {})", id, sexp_expr(e)),
+        Stmt::Block(stmts) => format!(
+            "(block {})",
+            stmts
+                .iter()
+                .map(sexp_stmt)
+                .collect::<Vec<String>>()
+                .join(" ")
+        ),
     }
 }
 

@@ -65,28 +65,44 @@ fn error<T>(report: impl Into<String>, line: Line) -> Result<T, RuntimeError> {
 
 #[derive(Debug, Default)]
 pub struct Environment {
+    pub enclosing: Box<Option<Environment>>,
     pub values: HashMap<String, Value>,
 }
 
 impl Environment {
+    pub fn new(enclosing: Self) -> Self {
+        Self {
+            enclosing: Box::new(Some(enclosing)),
+            ..Default::default()
+        }
+    }
+
+    fn enclosing(&mut self, enclosing_env: Environment) {
+        self.enclosing = Box::new(Some(enclosing_env));
+    }
+
     pub fn define(&mut self, name: String, value: Value) {
         self.values.insert(name, value);
     }
 
     pub fn get(&self, name: String) -> Result<Value, String> {
-        match self.values.get(&name) {
-            Some(v) => Ok(v.clone()),
-            None => Err(format!("undefined variable \"{}\"", &name)),
+        if let Some(v) = self.values.get(&name) {
+            Ok(v.clone())
+        } else if let Some(e) = &*self.enclosing {
+            e.get(name)
+        } else {
+            Err(format!("undefined variable \"{}\"", &name))
         }
     }
 
     pub fn assign(&mut self, name: String, value: Value) -> Result<Value, String> {
-        match self.values.get(&name) {
-            Some(_) => {
-                self.values.insert(name, value.clone());
-                Ok(value)
-            }
-            None => Err(format!("undefined variable \"{}\"", &name)),
+        if self.values.get(&name).is_some() {
+            self.values.insert(name, value.clone());
+            Ok(value)
+        } else if let Some(e) = &mut *self.enclosing {
+            e.assign(name, value)
+        } else {
+            Err(format!("undefined variable \"{}\"", &name))
         }
     }
 }
@@ -106,7 +122,11 @@ impl<Out: Write> Interpreter<Out> {
     }
 
     pub fn interpret(&mut self, program: &Program) -> Result<(), RuntimeError> {
-        for stmt in &program.stmts {
+        self.interpret_stmts(&program.stmts)
+    }
+
+    fn interpret_stmts(&mut self, stmts: &[Stmt]) -> Result<(), RuntimeError> {
+        for stmt in stmts {
             self.interpret_stmt(stmt)?;
         }
 
@@ -122,13 +142,22 @@ impl<Out: Write> Interpreter<Out> {
                 self.interpret_print(expr)?;
             }
             Stmt::VarDecl(name, expr) => {
-                if let Token::Identifier(_, name) = name {
-                    let init_value = self.interpret_expr(expr)?;
-                    self.environment.define(name.into(), init_value);
-                } else {
-                    return error("invalid variable token", name.line());
-                }
+                self.interpret_var_decl(name, expr)?;
             }
+            Stmt::Block(stmts) => {
+                self.interpret_stmts(stmts)?;
+            }
+        };
+
+        Ok(())
+    }
+
+    fn interpret_var_decl(&mut self, name: &Token, expr: &Expr) -> Result<(), RuntimeError> {
+        if let Token::Identifier(_, name) = name {
+            let init_value = self.interpret_expr(expr)?;
+            self.environment.define(name.into(), init_value);
+        } else {
+            return error("invalid variable token", name.line());
         };
 
         Ok(())
@@ -448,5 +477,20 @@ mod tests {
         let mut out = Vec::new();
         interpret("var a = 1; a = 2 + a; print a;", &mut out).unwrap();
         assert_outputted(out, "3".into());
+    }
+
+    #[test]
+    fn test_block() {
+        let mut out = Vec::new();
+        let script = r#"
+        var a = "outer";
+        {
+            var a = "inner";
+            print a;
+        }
+        print a;
+        "#;
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "\"inner\"\n\"outer\"".into());
     }
 }

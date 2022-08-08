@@ -80,6 +80,7 @@ impl Parser {
     fn parse_stmt(&mut self) -> Result<Stmt, ParserError> {
         match self.peek() {
             Token::Print(_) => self.parse_print_stmt(),
+            Token::LeftBrace(_) => self.parse_block(),
             _ => self.parse_expr_stmt(),
         }
     }
@@ -92,6 +93,27 @@ impl Parser {
         match self.next() {
             Token::Semicolon(_) => Ok(Stmt::Print(expr)),
             t => error(format!("expected a \";\", but got \"{}\"", t), t.line()),
+        }
+    }
+
+    fn parse_block(&mut self) -> Result<Stmt, ParserError> {
+        // consume {
+        self.next();
+
+        let mut stmts = Vec::new();
+        loop {
+            match self.peek() {
+                Token::RightBrace(_) => break,
+                Token::Eof(_) => break,
+                _ => (),
+            };
+
+            stmts.push(self.parse_decl()?);
+        }
+
+        match self.next() {
+            Token::RightBrace(_) => Ok(Stmt::Block(stmts)),
+            t => error(format!("expected a \"}}\", but got \"{}\"", t), t.line()),
         }
     }
 
@@ -147,9 +169,11 @@ impl Parser {
                 t if t.is_infix_op() => t,
                 // Not super fond if this approach here. I'm looking at what
                 // could be potential expression ends and break out.
-                Token::Eof(_) | Token::RightParen(_) | Token::Colon(_) | Token::Semicolon(_) => {
-                    break
-                }
+                Token::Eof(_)
+                | Token::RightParen(_)
+                | Token::RightBrace(_)
+                | Token::Colon(_)
+                | Token::Semicolon(_) => break,
                 t => return error(format!("expected an operator, but got \"{}\"", t), t.line()),
             };
 
@@ -350,5 +374,13 @@ mod tests {
     fn test_assignment() {
         assert_eq!("(= a 42)", sexp("a = 42;"));
         assert!(parse_expr("1 + 2 = 42").is_err());
+    }
+
+    #[test]
+    fn test_block() {
+        assert_eq!(
+            "(block (var a 42) (print a))",
+            sexp("{ var a = 42; print a; }")
+        );
     }
 }
