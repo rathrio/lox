@@ -79,6 +79,16 @@ impl Environment {
             None => Err(format!("undefined variable \"{}\"", &name)),
         }
     }
+
+    pub fn assign(&mut self, name: String, value: Value) -> Result<Value, String> {
+        match self.values.get(&name) {
+            Some(_) => {
+                self.values.insert(name, value.clone());
+                Ok(value)
+            }
+            None => Err(format!("undefined variable \"{}\"", &name)),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -111,7 +121,7 @@ impl<Out: Write> Interpreter<Out> {
             Stmt::Print(expr) => {
                 self.interpret_print(expr)?;
             }
-            Stmt::Var(name, expr) => {
+            Stmt::VarDecl(name, expr) => {
                 if let Token::Identifier(_, name) = name {
                     let init_value = self.interpret_expr(expr)?;
                     self.environment.define(name.into(), init_value);
@@ -133,7 +143,7 @@ impl<Out: Write> Interpreter<Out> {
         Ok(())
     }
 
-    fn interpret_expr(&self, expr: &Expr) -> Result<Value, RuntimeError> {
+    fn interpret_expr(&mut self, expr: &Expr) -> Result<Value, RuntimeError> {
         match expr {
             Expr::Number(n) => Ok(Value::Number(*n)),
             Expr::Str(s) => Ok(Value::Str(s.into())),
@@ -145,14 +155,23 @@ impl<Out: Write> Interpreter<Out> {
             Expr::Ternary(condition, conclusion, alternate) => {
                 self.interpret_ternary_expr(condition, conclusion, alternate)
             }
-            Expr::Variable(name) => self
+            Expr::Var(name) => self
                 .environment
-                .get(name.into())
-                .map_err(|msg| RuntimeError::new(msg, 9999999)), // TODO: Each node should know about their span...
+                .get(format!("{}", name))
+                .map_err(|msg| RuntimeError::new(msg, name.line())),
+            Expr::Assign(lhs, rhs) => match lhs {
+                Token::Identifier(line, name) => {
+                    let value = self.interpret_expr(rhs)?;
+                    self.environment
+                        .assign(name.into(), value)
+                        .map_err(|msg| RuntimeError::new(msg, *line))
+                }
+                t => error(format!("invalid LHS for assignment \"{}\"", t), t.line()),
+            },
         }
     }
 
-    fn interpret_unary_expr(&self, op: &Token, expr: &Expr) -> Result<Value, RuntimeError> {
+    fn interpret_unary_expr(&mut self, op: &Token, expr: &Expr) -> Result<Value, RuntimeError> {
         let value = self.interpret_expr(expr)?;
 
         match op {
@@ -175,7 +194,7 @@ impl<Out: Write> Interpreter<Out> {
     }
 
     fn interpret_binary_expr(
-        &self,
+        &mut self,
         lhs: &Expr,
         op: &Token,
         rhs: &Expr,
@@ -234,7 +253,7 @@ impl<Out: Write> Interpreter<Out> {
     }
 
     fn interpret_ternary_expr(
-        &self,
+        &mut self,
         condition_expr: &Expr,
         conclusion_expr: &Expr,
         alternate_expr: &Expr,
@@ -258,7 +277,7 @@ mod tests {
 
     fn interpret_expr(input: &str) -> Result<Value, RuntimeError> {
         let expr = Parser::parse_expr_str(input).expect("syntax error");
-        let interpreter = Interpreter::new(io::stdout());
+        let mut interpreter = Interpreter::new(io::stdout());
         interpreter.interpret_expr(&expr)
     }
 
@@ -422,5 +441,12 @@ mod tests {
         let mut out = Vec::new();
         interpret("var a = 40; var a = a + 2; print a;", &mut out).unwrap();
         assert_outputted(out, "42".into());
+    }
+
+    #[test]
+    fn test_variable_assign() {
+        let mut out = Vec::new();
+        interpret("var a = 1; a = 2 + a; print a;", &mut out).unwrap();
+        assert_outputted(out, "3".into());
     }
 }

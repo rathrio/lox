@@ -75,6 +75,7 @@ impl Token {
                 | Token::Or(_)
                 | Token::Comma(_)
                 | Token::Query(_)
+                | Token::Equal(_)
         )
     }
 

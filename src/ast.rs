@@ -1,13 +1,15 @@
 use crate::lexer::Token;
 
+#[derive(Debug)]
 pub struct Program {
     pub stmts: Vec<Stmt>,
 }
 
+#[derive(Debug)]
 pub enum Stmt {
     Expr(Expr),
     Print(Expr),
-    Var(Token, Expr),
+    VarDecl(Token, Expr),
 }
 
 #[derive(Debug)]
@@ -20,7 +22,8 @@ pub enum Expr {
     Unary(Token, Box<Expr>),
     Binary(Box<Expr>, Token, Box<Expr>),
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
-    Variable(String),
+    Var(Token),
+    Assign(Token, Box<Expr>),
 }
 
 pub fn sexp_expr(e: &Expr) -> String {
@@ -38,7 +41,8 @@ pub fn sexp_expr(e: &Expr) -> String {
             sexp_expr(conclusion),
             sexp_expr(alternate)
         ),
-        Expr::Variable(name) => name.into(),
+        Expr::Var(name) => format!("{}", name),
+        Expr::Assign(lhs, rhs) => format!("(= {} {})", lhs, sexp_expr(rhs)),
     }
 }
 
@@ -46,7 +50,7 @@ pub fn sexp_stmt(s: &Stmt) -> String {
     match s {
         Stmt::Expr(e) => sexp_expr(e),
         Stmt::Print(e) => format!("(print {})", sexp_expr(e)),
-        Stmt::Var(id, e) => format!("(var {} {})", id, sexp_expr(e)),
+        Stmt::VarDecl(id, e) => format!("(var {} {})", id, sexp_expr(e)),
     }
 }
 
@@ -68,13 +72,14 @@ fn rpn(e: &Expr) -> String {
         Expr::Grouping(e) => rpn(e),
         Expr::Unary(op, e) => format!("{} {}", rpn(e), op),
         Expr::Binary(lhs, op, rhs) => format!("{} {} {}", rpn(lhs), rpn(rhs), op),
-        Expr::Variable(name) => name.into(),
+        Expr::Var(name) => format!("{}", name),
         Expr::Ternary(condition, conclusion, alternate) => format!(
             "{} ? {} : {}",
             rpn(condition),
             rpn(conclusion),
             rpn(alternate)
         ),
+        Expr::Assign(lhs, rhs) => format!("{} {} =", sexp_expr(rhs), lhs),
     }
 }
 

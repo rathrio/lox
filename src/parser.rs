@@ -65,7 +65,9 @@ impl Parser {
         let id = self.next();
         let eq = self.next();
         let decl = match (&id, &eq) {
-            (Token::Identifier(_, _), Token::Equal(_)) => Ok(Stmt::Var(id, self.parse_expr(0)?)),
+            (Token::Identifier(_, _), Token::Equal(_)) => {
+                Ok(Stmt::VarDecl(id, self.parse_expr(0)?))
+            }
             (t, _) => error("invalid variable declaration", t.line()),
         };
 
@@ -102,7 +104,7 @@ impl Parser {
     }
 
     fn parse_expr(&mut self, min_bp: u8) -> Result<Expr, ParserError> {
-        let mut lhs = match self.next() {
+        let mut expr = match self.next() {
             op if op.is_prefix_op() => {
                 let (_, bp) = prefix_binding_power(&op)?;
                 let lhs = self.parse_expr(bp)?;
@@ -125,7 +127,7 @@ impl Parser {
             Token::True(_) => Ok(Expr::Bool(true)),
             Token::False(_) => Ok(Expr::Bool(false)),
             Token::Nil(_) => Ok(Expr::Nil),
-            Token::Identifier(_, name) => Ok(Expr::Variable(name)),
+            Token::Identifier(line, name) => Ok(Expr::Var(Token::Identifier(line, name))),
             Token::LeftParen(_) => {
                 let lhs = self.parse_expr(0)?;
 
@@ -163,17 +165,21 @@ impl Parser {
                 let conclusion = self.parse_expr(0)?;
                 if let Token::Colon(_) = self.next() {
                     let alternate = self.parse_expr(r_bp)?;
-                    lhs = Expr::Ternary(Box::new(lhs), Box::new(conclusion), Box::new(alternate));
+                    expr = Expr::Ternary(Box::new(expr), Box::new(conclusion), Box::new(alternate));
                 } else {
                     return error("missing \":\" in ternary", op.line());
                 }
             } else {
                 let rhs = self.parse_expr(r_bp)?;
-                lhs = Expr::Binary(Box::new(lhs), op.clone(), Box::new(rhs))
+                expr = Expr::Binary(Box::new(expr), op.clone(), Box::new(rhs));
+
+                if let Token::Equal(_) = op {
+                    expr = self.try_into_assign(expr, op.line())?;
+                }
             }
         }
 
-        Ok(lhs)
+        Ok(expr)
     }
 
     fn peek(&self) -> Token {
@@ -183,27 +189,38 @@ impl Parser {
     fn next(&mut self) -> Token {
         self.tokens.drain(0..1).next().expect("overshot EOF")
     }
+
+    fn try_into_assign(&self, expr: Expr, line: Line) -> Result<Expr, ParserError> {
+        if let Expr::Binary(lhs, Token::Equal(_), rhs) = expr {
+            if let Expr::Var(name) = *lhs {
+                return Ok(Expr::Assign(name, rhs));
+            }
+        }
+
+        Err(ParserError::new("invalid LHS in assignment", line))
+    }
 }
 
 fn infix_binding_power(op: &Token) -> Result<(u8, u8), ParserError> {
     match op {
-        Token::Comma(_) => Ok((1, 2)),
-        Token::Query(_) => Ok((4, 3)),
-        Token::BangEqual(_) | Token::EqualEqual(_) => Ok((4, 5)),
+        Token::Equal(_) => Ok((1, 2)),
+        Token::Comma(_) => Ok((2, 3)),
+        Token::Query(_) => Ok((5, 4)),
+        Token::BangEqual(_) | Token::EqualEqual(_) => Ok((5, 6)),
         Token::Greater(_) | Token::GreaterEqual(_) | Token::Less(_) | Token::LessEqual(_) => {
-            Ok((6, 7))
+            Ok((7, 8))
         }
-        Token::Minus(_) => Ok((8, 9)),
-        Token::Plus(_) => Ok((8, 9)),
-        Token::Slash(_) => Ok((10, 11)),
-        Token::Star(_) => Ok((10, 11)),
+        Token::Minus(_) => Ok((9, 10)),
+        Token::Plus(_) => Ok((9, 10)),
+        Token::Slash(_) => Ok((11, 12)),
+        Token::Star(_) => Ok((11, 12)),
         t => error(format!("invalid infix operator {}", t), t.line()),
     }
 }
 
 fn prefix_binding_power(op: &Token) -> Result<((), u8), ParserError> {
     match op {
-        Token::Minus(_) | Token::Bang(_) => Ok(((), 10)),
+        Token::Minus(_) | Token::Bang(_) => Ok(((), 13)),
         t => error(format!("invalid prefix operator {}", t), t.line()),
     }
 }
@@ -327,5 +344,11 @@ mod tests {
             "(var name (+ \"hi \" \"tadeus\"))",
             sexp("var name = \"hi \" + \"tadeus\";")
         );
+    }
+
+    #[test]
+    fn test_assignment() {
+        assert_eq!("(= a 42)", sexp("a = 42;"));
+        assert!(parse_expr("1 + 2 = 42").is_err());
     }
 }
