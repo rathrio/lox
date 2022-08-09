@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, io::Write};
+use std::{cell::RefCell, collections::HashMap, fmt::Display, io::Write, rc::Rc};
 
 use crate::{
     ast::{Expr, Program, Stmt},
@@ -63,22 +63,20 @@ fn error<T>(report: impl Into<String>, line: Line) -> Result<T, RuntimeError> {
     Err(RuntimeError::new(report, line))
 }
 
-#[derive(Debug, Default)]
-pub struct Environment {
-    pub enclosing: Box<Option<Environment>>,
+type ShareableEnv = Rc<RefCell<Env>>;
+
+#[derive(Debug)]
+pub struct Env {
+    pub enclosing: Option<ShareableEnv>,
     pub values: HashMap<String, Value>,
 }
 
-impl Environment {
-    pub fn new(enclosing: Self) -> Self {
+impl Env {
+    pub fn new(enclosing: Option<ShareableEnv>) -> Self {
         Self {
-            enclosing: Box::new(Some(enclosing)),
-            ..Default::default()
+            enclosing,
+            values: HashMap::new(),
         }
-    }
-
-    fn enclosing(&mut self, enclosing_env: Environment) {
-        self.enclosing = Box::new(Some(enclosing_env));
     }
 
     pub fn define(&mut self, name: String, value: Value) {
@@ -88,8 +86,8 @@ impl Environment {
     pub fn get(&self, name: String) -> Result<Value, String> {
         if let Some(v) = self.values.get(&name) {
             Ok(v.clone())
-        } else if let Some(e) = &*self.enclosing {
-            e.get(name)
+        } else if let Some(e) = &self.enclosing {
+            e.borrow_mut().get(name)
         } else {
             Err(format!("undefined variable \"{}\"", &name))
         }
@@ -99,8 +97,8 @@ impl Environment {
         if self.values.get(&name).is_some() {
             self.values.insert(name, value.clone());
             Ok(value)
-        } else if let Some(e) = &mut *self.enclosing {
-            e.assign(name, value)
+        } else if let Some(e) = &self.enclosing {
+            e.borrow_mut().assign(name, value)
         } else {
             Err(format!("undefined variable \"{}\"", &name))
         }
@@ -109,53 +107,60 @@ impl Environment {
 
 #[derive(Debug)]
 pub struct Interpreter<Out: Write> {
-    environment: Environment,
     out: Out,
 }
 
 impl<Out: Write> Interpreter<Out> {
     pub fn new(out: Out) -> Self {
-        Self {
-            environment: Environment::default(),
-            out,
-        }
+        Self { out }
     }
 
     pub fn interpret(&mut self, program: &Program) -> Result<(), RuntimeError> {
-        self.interpret_stmts(&program.stmts)
+        let env = Env::new(None);
+        self.interpret_stmts(&program.stmts, Rc::new(RefCell::new(env)))
     }
 
-    fn interpret_stmts(&mut self, stmts: &[Stmt]) -> Result<(), RuntimeError> {
+    fn interpret_stmts(&mut self, stmts: &[Stmt], env: ShareableEnv) -> Result<(), RuntimeError> {
         for stmt in stmts {
-            self.interpret_stmt(stmt)?;
+            self.interpret_stmt(stmt, env.clone())?;
         }
 
         Ok(())
     }
 
-    fn interpret_stmt(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
+    fn interpret_stmt(&mut self, stmt: &Stmt, env: ShareableEnv) -> Result<(), RuntimeError> {
         match stmt {
             Stmt::Expr(expr) => {
-                self.interpret_expr(expr)?;
+                self.interpret_expr(expr, env)?;
             }
             Stmt::Print(expr) => {
-                self.interpret_print(expr)?;
+                self.interpret_print(expr, env)?;
             }
             Stmt::VarDecl(name, expr) => {
-                self.interpret_var_decl(name, expr)?;
+                self.interpret_var_decl(name, expr, env)?;
             }
             Stmt::Block(stmts) => {
-                self.interpret_stmts(stmts)?;
+                self.interpret_block(stmts, env)?;
             }
         };
 
         Ok(())
     }
 
-    fn interpret_var_decl(&mut self, name: &Token, expr: &Expr) -> Result<(), RuntimeError> {
+    fn interpret_block(&mut self, stmts: &[Stmt], env: ShareableEnv) -> Result<(), RuntimeError> {
+        let local_env = Env::new(Some(env));
+        self.interpret_stmts(stmts, Rc::new(RefCell::new(local_env)))
+    }
+
+    fn interpret_var_decl(
+        &self,
+        name: &Token,
+        expr: &Expr,
+        env: ShareableEnv,
+    ) -> Result<(), RuntimeError> {
         if let Token::Identifier(_, name) = name {
-            let init_value = self.interpret_expr(expr)?;
-            self.environment.define(name.into(), init_value);
+            let init_value = self.interpret_expr(expr, env.clone())?;
+            env.borrow_mut().define(name.into(), init_value);
         } else {
             return error("invalid variable token", name.line());
         };
@@ -163,8 +168,8 @@ impl<Out: Write> Interpreter<Out> {
         Ok(())
     }
 
-    fn interpret_print(&mut self, expr: &Expr) -> Result<(), RuntimeError> {
-        let value = self.interpret_expr(expr)?;
+    fn interpret_print(&mut self, expr: &Expr, env: ShareableEnv) -> Result<(), RuntimeError> {
+        let value = self.interpret_expr(expr, env)?;
         self.out
             .write_all(format!("{}\n", value).as_bytes())
             .unwrap();
@@ -172,26 +177,26 @@ impl<Out: Write> Interpreter<Out> {
         Ok(())
     }
 
-    fn interpret_expr(&mut self, expr: &Expr) -> Result<Value, RuntimeError> {
+    fn interpret_expr(&self, expr: &Expr, env: ShareableEnv) -> Result<Value, RuntimeError> {
         match expr {
             Expr::Number(n) => Ok(Value::Number(*n)),
             Expr::Str(s) => Ok(Value::Str(s.into())),
             Expr::Bool(b) => Ok(Value::Bool(*b)),
             Expr::Nil => Ok(Value::Nil),
-            Expr::Grouping(expr) => self.interpret_expr(expr),
-            Expr::Unary(op, expr) => self.interpret_unary_expr(op, expr),
-            Expr::Binary(lhs, op, rhs) => self.interpret_binary_expr(lhs, op, rhs),
+            Expr::Grouping(expr) => self.interpret_expr(expr, env),
+            Expr::Unary(op, expr) => self.interpret_unary_expr(op, expr, env),
+            Expr::Binary(lhs, op, rhs) => self.interpret_binary_expr(lhs, op, rhs, env),
             Expr::Ternary(condition, conclusion, alternate) => {
-                self.interpret_ternary_expr(condition, conclusion, alternate)
+                self.interpret_ternary_expr(condition, conclusion, alternate, env)
             }
-            Expr::Var(name) => self
-                .environment
+            Expr::Var(name) => env
+                .borrow()
                 .get(format!("{}", name))
                 .map_err(|msg| RuntimeError::new(msg, name.line())),
             Expr::Assign(lhs, rhs) => match lhs {
                 Token::Identifier(line, name) => {
-                    let value = self.interpret_expr(rhs)?;
-                    self.environment
+                    let value = self.interpret_expr(rhs, env.clone())?;
+                    env.borrow_mut()
                         .assign(name.into(), value)
                         .map_err(|msg| RuntimeError::new(msg, *line))
                 }
@@ -200,8 +205,13 @@ impl<Out: Write> Interpreter<Out> {
         }
     }
 
-    fn interpret_unary_expr(&mut self, op: &Token, expr: &Expr) -> Result<Value, RuntimeError> {
-        let value = self.interpret_expr(expr)?;
+    fn interpret_unary_expr(
+        &self,
+        op: &Token,
+        expr: &Expr,
+        env: ShareableEnv,
+    ) -> Result<Value, RuntimeError> {
+        let value = self.interpret_expr(expr, env)?;
 
         match op {
             Token::Minus(_) => {
@@ -223,13 +233,14 @@ impl<Out: Write> Interpreter<Out> {
     }
 
     fn interpret_binary_expr(
-        &mut self,
+        &self,
         lhs: &Expr,
         op: &Token,
         rhs: &Expr,
+        env: ShareableEnv,
     ) -> Result<Value, RuntimeError> {
-        let left = self.interpret_expr(lhs)?;
-        let right = self.interpret_expr(rhs)?;
+        let left = self.interpret_expr(lhs, env.clone())?;
+        let right = self.interpret_expr(rhs, env)?;
 
         match op {
             Token::Comma(_) => Ok(right),
@@ -282,17 +293,18 @@ impl<Out: Write> Interpreter<Out> {
     }
 
     fn interpret_ternary_expr(
-        &mut self,
+        &self,
         condition_expr: &Expr,
         conclusion_expr: &Expr,
         alternate_expr: &Expr,
+        env: ShareableEnv,
     ) -> Result<Value, RuntimeError> {
-        let condition = self.interpret_expr(condition_expr)?;
+        let condition = self.interpret_expr(condition_expr, env.clone())?;
 
         if condition.is_truthy() {
-            self.interpret_expr(conclusion_expr)
+            self.interpret_expr(conclusion_expr, env)
         } else {
-            self.interpret_expr(alternate_expr)
+            self.interpret_expr(alternate_expr, env)
         }
     }
 }
@@ -306,8 +318,9 @@ mod tests {
 
     fn interpret_expr(input: &str) -> Result<Value, RuntimeError> {
         let expr = Parser::parse_expr_str(input).expect("syntax error");
-        let mut interpreter = Interpreter::new(io::stdout());
-        interpreter.interpret_expr(&expr)
+        let interpreter = Interpreter::new(io::stdout());
+        let env = Rc::new(RefCell::new(Env::new(None)));
+        interpreter.interpret_expr(&expr, env)
     }
 
     fn interpret(input: &str, out: &mut impl Write) -> Result<(), RuntimeError> {
@@ -480,7 +493,7 @@ mod tests {
     }
 
     #[test]
-    fn test_block() {
+    fn test_block_scope() {
         let mut out = Vec::new();
         let script = r#"
         var a = "outer";
@@ -492,5 +505,34 @@ mod tests {
         "#;
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "\"inner\"\n\"outer\"".into());
+    }
+
+    #[test]
+    fn test_block_scope_2() {
+        let mut out = Vec::new();
+        let script = r#"
+        var a = "outer";
+        {
+            var b = "inner";
+        }
+        print b;
+        "#;
+        assert!(interpret(script, &mut out).is_err());
+    }
+
+    #[test]
+    fn test_block_scope_3() {
+        let mut out = Vec::new();
+        let script = r#"
+        var a = "outer";
+        {
+            {
+                a = "inner";
+            }
+        }
+        print a;
+        "#;
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "\"inner\"".into());
     }
 }
