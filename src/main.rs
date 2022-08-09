@@ -10,11 +10,31 @@ pub struct Args {
 }
 
 fn run(interpreter: &mut Interpreter<io::Stdout>, script: String) {
+    let script = script.trim();
+    if script.ends_with(';') || script.ends_with('}') {
+        run_statment(script.into(), interpreter);
+    } else {
+        run_expr(script.into(), interpreter);
+    }
+}
+
+fn run_statment(script: String, interpreter: &mut Interpreter<io::Stdout>) {
     match Parser::parse_str(&script) {
         Ok(program) => match interpreter.interpret(&program) {
             Ok(_) => (),
             Err(error) => println!("runtime error: {}", error.report),
         },
+        Err(error) => println!("syntax error: {}", error.report),
+    };
+}
+
+fn run_expr(script: String, interpreter: &mut Interpreter<io::Stdout>) {
+    match Parser::parse_expr_str(&script) {
+        Ok(expr) => match interpreter.interpret_expr(&expr, interpreter.env.clone()) {
+            Ok(v) => println!("=> {}", v),
+            Err(error) => println!("runtime error: {}", error.report),
+        },
+
         Err(error) => println!("syntax error: {}", error.report),
     };
 }

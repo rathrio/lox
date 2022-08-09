@@ -108,16 +108,17 @@ impl Env {
 #[derive(Debug)]
 pub struct Interpreter<Out: Write> {
     out: Out,
+    pub env: ShareableEnv,
 }
 
 impl<Out: Write> Interpreter<Out> {
     pub fn new(out: Out) -> Self {
-        Self { out }
+        let env = Rc::new(RefCell::new(Env::new(None)));
+        Self { out, env }
     }
 
     pub fn interpret(&mut self, program: &Program) -> Result<(), RuntimeError> {
-        let env = Env::new(None);
-        self.interpret_stmts(&program.stmts, Rc::new(RefCell::new(env)))
+        self.interpret_stmts(&program.stmts, self.env.clone())
     }
 
     fn interpret_stmts(&mut self, stmts: &[Stmt], env: ShareableEnv) -> Result<(), RuntimeError> {
@@ -177,7 +178,7 @@ impl<Out: Write> Interpreter<Out> {
         Ok(())
     }
 
-    fn interpret_expr(&self, expr: &Expr, env: ShareableEnv) -> Result<Value, RuntimeError> {
+    pub fn interpret_expr(&self, expr: &Expr, env: ShareableEnv) -> Result<Value, RuntimeError> {
         match expr {
             Expr::Number(n) => Ok(Value::Number(*n)),
             Expr::Str(s) => Ok(Value::Str(s.into())),
@@ -534,5 +535,19 @@ mod tests {
         "#;
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "\"inner\"".into());
+    }
+
+    #[test]
+    fn test_block_scope_4() {
+        let mut out = Vec::new();
+        let script = r#"
+        var a = 1;
+        {
+             var a = a + 2;
+             print a;
+        }
+        "#;
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "3".into());
     }
 }
