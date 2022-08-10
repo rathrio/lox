@@ -79,10 +79,49 @@ impl Parser {
 
     fn parse_stmt(&mut self) -> Result<Stmt, ParserError> {
         match self.peek() {
+            Token::If(_) => self.parse_if_stmt(),
             Token::Print(_) => self.parse_print_stmt(),
             Token::LeftBrace(_) => self.parse_block(),
             _ => self.parse_expr_stmt(),
         }
+    }
+
+    fn parse_if_stmt(&mut self) -> Result<Stmt, ParserError> {
+        // consume if token
+        self.next();
+
+        match self.next() {
+            Token::LeftParen(_) => (),
+            t => {
+                return error(
+                    format!("expected \"(\" after if, but got \"{}\" instead", t),
+                    t.line(),
+                )?
+            }
+        }
+
+        let condition = self.parse_expr(0)?;
+
+        match self.next() {
+            Token::RightParen(_) => (),
+            t => {
+                return error(
+                    format!("expected \")\" after if condition, but got \"{}\" instead", t),
+                    t.line(),
+                )?
+            }
+        }
+
+        let then_branch = self.parse_stmt()?;
+
+        let mut else_branch = None;
+        if let Token::Else(_) = self.peek() {
+            self.next();
+            let eb = self.parse_stmt()?;
+            else_branch = Some(Box::new(eb));
+        }
+
+        Ok(Stmt::If(condition, Box::new(then_branch), else_branch))
     }
 
     fn parse_print_stmt(&mut self) -> Result<Stmt, ParserError> {
@@ -382,5 +421,22 @@ mod tests {
             "(block (var a 42) (print a))",
             sexp("{ var a = 42; print a; }")
         );
+    }
+
+    #[test]
+    fn test_if_else() {
+        let script = r#"
+        if (1 + 1)
+            print "hey";
+        "#;
+        assert_eq!("(if (+ 1 1) (print \"hey\"))", sexp(script));
+
+        let script = r#"
+        if (42)
+            print "hey";
+        else
+            print "ho";
+        "#;
+        assert_eq!("(if 42 (print \"hey\") (print \"ho\"))", sexp(script));
     }
 }

@@ -143,6 +143,15 @@ impl<Out: Write> Interpreter<Out> {
             Stmt::Block(stmts) => {
                 self.interpret_block(stmts, env)?;
             }
+            Stmt::If(condition, then_branch, else_branch) => {
+                let c = self.interpret_expr(condition, env.clone())?;
+
+                if c.is_truthy() {
+                    self.interpret_stmt(then_branch, env)?
+                } else if let Some(b) = else_branch {
+                    self.interpret_stmt(b, env)?
+                }
+            }
         };
 
         Ok(())
@@ -549,5 +558,29 @@ mod tests {
         "#;
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "3".into());
+    }
+
+    #[test]
+    fn test_if_else() {
+        let mut out = Vec::new();
+        let script = r#"
+        if (42)
+            print "hey";
+        else
+            print "ho";
+        "#;
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "\"hey\"".into());
+
+        let mut out = Vec::new();
+        let script = r#"
+        if (!42)
+            print "hey";
+        else {
+            print "chabis";
+        }
+        "#;
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "\"chabis\"".into());
     }
 }

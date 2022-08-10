@@ -11,6 +11,7 @@ pub enum Stmt {
     Print(Expr),
     VarDecl(Token, Expr),
     Block(Vec<Stmt>),
+    If(Expr, Box<Stmt>, Option<Box<Stmt>>),
 }
 
 #[derive(Debug)]
@@ -59,6 +60,15 @@ pub fn sexp_stmt(s: &Stmt) -> String {
                 .map(sexp_stmt)
                 .collect::<Vec<String>>()
                 .join(" ")
+        ),
+        Stmt::If(condition, then_branch, None) => {
+            format!("(if {} {})", sexp_expr(condition), sexp_stmt(then_branch),)
+        }
+        Stmt::If(condition, then_branch, Some(else_branch)) => format!(
+            "(if {} {} {})",
+            sexp_expr(condition),
+            sexp_stmt(then_branch),
+            sexp_stmt(else_branch),
         ),
     }
 }
