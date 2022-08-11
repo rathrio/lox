@@ -71,16 +71,15 @@ impl Parser {
             (t, _) => error("invalid variable declaration", t.line()),
         };
 
-        match self.next() {
-            Token::Semicolon(_) => decl,
-            t => error(format!("expected a \";\", but got \"{}\"", t), t.line()),
-        }
+        self.expect_semi("after variable declaration")?;
+        decl
     }
 
     fn parse_stmt(&mut self) -> Result<Stmt, ParserError> {
         match self.peek() {
             Token::If(_) => self.parse_if_stmt(),
             Token::While(_) => self.parse_while_stmt(),
+            Token::For(_) => self.parse_for_stmt(),
             Token::Print(_) => self.parse_print_stmt(),
             Token::LeftBrace(_) => self.parse_block(),
             _ => self.parse_expr_stmt(),
@@ -116,15 +115,50 @@ impl Parser {
         Ok(Stmt::While(condition, Box::new(stmt)))
     }
 
+    fn parse_for_stmt(&mut self) -> Result<Stmt, ParserError> {
+        // consume for token
+        self.next();
+        self.expect_left_paren("after for")?;
+
+        let mut block_stmts: Vec<Stmt> = Vec::new();
+
+        match self.peek() {
+            Token::Semicolon(_) => {
+                self.next();
+            }
+            Token::Var(_) => block_stmts.push(self.parse_var_decl()?),
+            _ => block_stmts.push(self.parse_expr_stmt()?),
+        };
+
+        let condition = match self.peek() {
+            Token::Semicolon(_) => Expr::Bool(true),
+            _ => self.parse_expr(0)?,
+        };
+        self.expect_semi("after loop condition")?;
+
+        let increment = match self.peek() {
+            Token::RightParen(_) => None,
+            _ => Some(self.parse_expr(0)?),
+        };
+        self.expect_right_paren("after for condition")?;
+
+        let for_stmt = self.parse_stmt()?;
+        let while_stmt = if let Some(i) = increment {
+            Stmt::Block(vec![for_stmt, Stmt::Expr(i)])
+        } else {
+            for_stmt
+        };
+
+        block_stmts.push(Stmt::While(condition, Box::new(while_stmt)));
+        Ok(Stmt::Block(block_stmts))
+    }
+
     fn parse_print_stmt(&mut self) -> Result<Stmt, ParserError> {
         // consume print token
         self.next();
-
         let expr = self.parse_expr(0)?;
-        match self.next() {
-            Token::Semicolon(_) => Ok(Stmt::Print(expr)),
-            t => error(format!("expected a \";\", but got \"{}\"", t), t.line()),
-        }
+        self.expect_semi("after print statement")?;
+        Ok(Stmt::Print(expr))
     }
 
     fn parse_block(&mut self) -> Result<Stmt, ParserError> {
@@ -150,10 +184,8 @@ impl Parser {
 
     fn parse_expr_stmt(&mut self) -> Result<Stmt, ParserError> {
         let expr = self.parse_expr(0)?;
-        match self.next() {
-            Token::Semicolon(_) => Ok(Stmt::Expr(expr)),
-            t => error(format!("expected a \";\", but got \"{}\"", t), t.line()),
-        }
+        self.expect_semi("after expression statement")?;
+        Ok(Stmt::Expr(expr))
     }
 
     fn parse_expr(&mut self, min_bp: u8) -> Result<Expr, ParserError> {
@@ -272,7 +304,19 @@ impl Parser {
             Token::RightParen(_) => Ok(()),
             t => {
                 return error(
-                    format!("expected \"(\" {}, but got \"{}\" instead", pos_msg, t),
+                    format!("expected \")\" {}, but got \"{}\" instead", pos_msg, t),
+                    t.line(),
+                )?
+            }
+        }
+    }
+
+    fn expect_semi(&mut self, pos_msg: &str) -> Result<(), ParserError> {
+        match self.next() {
+            Token::Semicolon(_) => Ok(()),
+            t => {
+                return error(
+                    format!("expected \";\" {}, but got \"{}\" instead", pos_msg, t),
                     t.line(),
                 )?
             }
@@ -467,5 +511,23 @@ mod tests {
             print "y";
         "#;
         assert_eq!("(while true (print \"y\"))", sexp(script));
+    }
+
+    #[test]
+    fn test_for() {
+        let script = r#"
+        for (var i = 0; i < 10; i = i + 1)
+            print i;
+        "#;
+        assert_eq!(
+            "(block (var i 0) (while (< i 10) (block (print i) (= i (+ i 1)))))",
+            sexp(script)
+        );
+
+        let script = r#"
+        for (;;)
+            print "y";
+        "#;
+        assert_eq!("(block (while true (print \"y\")))", sexp(script));
     }
 }
