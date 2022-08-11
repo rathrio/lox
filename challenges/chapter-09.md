@@ -22,3 +22,8 @@
    runtime, a break statement causes execution to jump to the end of the nearest
    enclosing loop and proceeds from there. Note that the break may be nested inside
    other blocks and if statements that also need to be exited.
+
+   Ok, I'm really proud of this one. In the parser I use a flag that is
+   propagated down in order to denote whether the current context is breakable
+   or not. In the interpreter I return a special enum with two variants. One
+   that means that a loop can continue, the other variant will break it.
