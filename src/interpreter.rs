@@ -156,6 +156,11 @@ impl<Out: Write> Interpreter<Out> {
                     self.interpret_stmt(b, env)?
                 }
             }
+            Stmt::While(condition, stmt) => {
+                while self.interpret_expr(condition, env.clone())?.is_truthy() {
+                    self.interpret_stmt(stmt, env.clone())?;
+                }
+            }
         };
 
         Ok(())
@@ -625,5 +630,19 @@ mod tests {
         "#;
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "42".into());
+    }
+
+    #[test]
+    fn test_while() {
+        let mut out = Vec::new();
+        let script = r#"
+        var a = 3;
+        while (a >= 0) {
+            print a;
+            a = a - 1;
+        }
+        "#;
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "3\n2\n1\n0".into());
     }
 }

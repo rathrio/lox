@@ -80,6 +80,7 @@ impl Parser {
     fn parse_stmt(&mut self) -> Result<Stmt, ParserError> {
         match self.peek() {
             Token::If(_) => self.parse_if_stmt(),
+            Token::While(_) => self.parse_while_stmt(),
             Token::Print(_) => self.parse_print_stmt(),
             Token::LeftBrace(_) => self.parse_block(),
             _ => self.parse_expr_stmt(),
@@ -89,32 +90,9 @@ impl Parser {
     fn parse_if_stmt(&mut self) -> Result<Stmt, ParserError> {
         // consume if token
         self.next();
-
-        match self.next() {
-            Token::LeftParen(_) => (),
-            t => {
-                return error(
-                    format!("expected \"(\" after if, but got \"{}\" instead", t),
-                    t.line(),
-                )?
-            }
-        }
-
+        self.expect_left_paren("after if")?;
         let condition = self.parse_expr(0)?;
-
-        match self.next() {
-            Token::RightParen(_) => (),
-            t => {
-                return error(
-                    format!(
-                        "expected \")\" after if condition, but got \"{}\" instead",
-                        t
-                    ),
-                    t.line(),
-                )?
-            }
-        }
-
+        self.expect_right_paren("after if condition")?;
         let then_branch = self.parse_stmt()?;
 
         let mut else_branch = None;
@@ -125,6 +103,17 @@ impl Parser {
         }
 
         Ok(Stmt::If(condition, Box::new(then_branch), else_branch))
+    }
+
+    fn parse_while_stmt(&mut self) -> Result<Stmt, ParserError> {
+        // consume while token
+        self.next();
+        self.expect_left_paren("after while")?;
+        let condition = self.parse_expr(0)?;
+        self.expect_right_paren("after while condition")?;
+        let stmt = self.parse_stmt()?;
+
+        Ok(Stmt::While(condition, Box::new(stmt)))
     }
 
     fn parse_print_stmt(&mut self) -> Result<Stmt, ParserError> {
@@ -264,6 +253,30 @@ impl Parser {
         }
 
         Err(ParserError::new("invalid LHS in assignment", line))
+    }
+
+    fn expect_left_paren(&mut self, pos_msg: &str) -> Result<(), ParserError> {
+        match self.next() {
+            Token::LeftParen(_) => Ok(()),
+            t => {
+                return error(
+                    format!("expected \"(\" {}, but got \"{}\" instead", pos_msg, t),
+                    t.line(),
+                )?
+            }
+        }
+    }
+
+    fn expect_right_paren(&mut self, pos_msg: &str) -> Result<(), ParserError> {
+        match self.next() {
+            Token::RightParen(_) => Ok(()),
+            t => {
+                return error(
+                    format!("expected \"(\" {}, but got \"{}\" instead", pos_msg, t),
+                    t.line(),
+                )?
+            }
+        }
     }
 }
 
@@ -445,5 +458,14 @@ mod tests {
     #[test]
     fn test_logical_expr() {
         assert_eq!("(or 42 (+ 4 2))", sexp_expr("42 or 4 + 2"));
+    }
+
+    #[test]
+    fn test_while() {
+        let script = r#"
+        while (true)
+            print "y";
+        "#;
+        assert_eq!("(while true (print \"y\"))", sexp(script));
     }
 }
