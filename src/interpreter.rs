@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Display, io::Write, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt::Display, io::Write, ops::ControlFlow, rc::Rc};
 
 use crate::{
     ast::{Expr, Program, Stmt},
@@ -109,6 +109,8 @@ impl Env {
     }
 }
 
+type Flow = ControlFlow<(), ()>;
+
 #[derive(Debug)]
 pub struct Interpreter<Out: Write> {
     out: Out,
@@ -121,53 +123,59 @@ impl<Out: Write> Interpreter<Out> {
         Self { out, env }
     }
 
-    pub fn interpret(&mut self, program: &Program) -> Result<(), RuntimeError> {
+    pub fn interpret(&mut self, program: &Program) -> Result<Flow, RuntimeError> {
         self.interpret_stmts(&program.stmts, self.env.clone())
     }
 
-    fn interpret_stmts(&mut self, stmts: &[Stmt], env: ShareableEnv) -> Result<(), RuntimeError> {
+    fn interpret_stmts(&mut self, stmts: &[Stmt], env: ShareableEnv) -> Result<Flow, RuntimeError> {
         for stmt in stmts {
-            self.interpret_stmt(stmt, env.clone())?;
+            if let Flow::Break(_) = self.interpret_stmt(stmt, env.clone())? {
+                return Ok(Flow::Break(()));
+            }
         }
 
-        Ok(())
+        Ok(Flow::Continue(()))
     }
 
-    fn interpret_stmt(&mut self, stmt: &Stmt, env: ShareableEnv) -> Result<(), RuntimeError> {
+    fn interpret_stmt(&mut self, stmt: &Stmt, env: ShareableEnv) -> Result<Flow, RuntimeError> {
         match stmt {
             Stmt::Expr(expr) => {
                 self.interpret_expr(expr, env)?;
+                Ok(Flow::Continue(()))
             }
             Stmt::Print(expr) => {
                 self.interpret_print(expr, env)?;
+                Ok(Flow::Continue(()))
             }
             Stmt::VarDecl(name, expr) => {
                 self.interpret_var_decl(name, expr, env)?;
+                Ok(Flow::Continue(()))
             }
-            Stmt::Block(stmts) => {
-                self.interpret_block(stmts, env)?;
-            }
+            Stmt::Block(stmts) => self.interpret_block(stmts, env),
             Stmt::If(condition, then_branch, else_branch) => {
-                let c = self.interpret_expr(condition, env.clone())?;
-
-                if c.is_truthy() {
-                    self.interpret_stmt(then_branch, env)?
+                let value = self.interpret_expr(condition, env.clone())?;
+                if value.is_truthy() {
+                    self.interpret_stmt(then_branch, env)
                 } else if let Some(b) = else_branch {
-                    self.interpret_stmt(b, env)?
+                    self.interpret_stmt(b, env)
+                } else {
+                    Ok(Flow::Continue(()))
                 }
             }
             Stmt::While(condition, stmt) => {
                 while self.interpret_expr(condition, env.clone())?.is_truthy() {
-                    self.interpret_stmt(stmt, env.clone())?;
+                    if let ControlFlow::Break(_) = self.interpret_stmt(stmt, env.clone())? {
+                        break;
+                    }
                 }
-            }
-            Stmt::Break => todo!(),
-        };
 
-        Ok(())
+                Ok(Flow::Continue(()))
+            }
+            Stmt::Break => Ok(Flow::Break(())),
+        }
     }
 
-    fn interpret_block(&mut self, stmts: &[Stmt], env: ShareableEnv) -> Result<(), RuntimeError> {
+    fn interpret_block(&mut self, stmts: &[Stmt], env: ShareableEnv) -> Result<Flow, RuntimeError> {
         let local_env = Env::new(Some(env));
         self.interpret_stmts(stmts, Rc::new(RefCell::new(local_env)))
     }
@@ -363,7 +371,7 @@ mod tests {
         interpreter.interpret_expr(&expr, env)
     }
 
-    fn interpret(input: &str, out: &mut impl Write) -> Result<(), RuntimeError> {
+    fn interpret(input: &str, out: &mut impl Write) -> Result<Flow, RuntimeError> {
         let program = Parser::parse_str(input).expect("syntax error");
         let mut interpreter = Interpreter::new(out);
         interpreter.interpret(&program)
@@ -653,7 +661,7 @@ mod tests {
         let script = r#"
         var a = 3;
         while (true) {
-            if (a >= 0) break;
+            if (a < 0) break;
             print a;
             a = a - 1;
         }

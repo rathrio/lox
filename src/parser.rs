@@ -303,36 +303,30 @@ impl Parser {
     fn expect_left_paren(&mut self, pos_msg: &str) -> Result<(), ParserError> {
         match self.next() {
             Token::LeftParen(_) => Ok(()),
-            t => {
-                return error(
-                    format!("expected \"(\" {}, but got \"{}\" instead", pos_msg, t),
-                    t.line(),
-                )?
-            }
+            t => error(
+                format!("expected \"(\" {}, but got \"{}\" instead", pos_msg, t),
+                t.line(),
+            )?,
         }
     }
 
     fn expect_right_paren(&mut self, pos_msg: &str) -> Result<(), ParserError> {
         match self.next() {
             Token::RightParen(_) => Ok(()),
-            t => {
-                return error(
-                    format!("expected \")\" {}, but got \"{}\" instead", pos_msg, t),
-                    t.line(),
-                )?
-            }
+            t => error(
+                format!("expected \")\" {}, but got \"{}\" instead", pos_msg, t),
+                t.line(),
+            )?,
         }
     }
 
     fn expect_semi(&mut self, pos_msg: &str) -> Result<(), ParserError> {
         match self.next() {
             Token::Semicolon(_) => Ok(()),
-            t => {
-                return error(
-                    format!("expected \";\" {}, but got \"{}\" instead", pos_msg, t),
-                    t.line(),
-                )?
-            }
+            t => error(
+                format!("expected \";\" {}, but got \"{}\" instead", pos_msg, t),
+                t.line(),
+            )?,
         }
     }
 }
