@@ -45,16 +45,16 @@ impl Parser {
         let mut stmts = Vec::new();
 
         while !self.peek().is_eof() {
-            stmts.push(self.parse_decl()?);
+            stmts.push(self.parse_decl(false)?);
         }
 
         Ok(Program { stmts })
     }
 
-    fn parse_decl(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_decl(&mut self, is_break_allowed: bool) -> Result<Stmt, ParserError> {
         match self.peek() {
             Token::Var(_) => self.parse_var_decl(),
-            _ => self.parse_stmt(),
+            _ => self.parse_stmt(is_break_allowed),
         }
     }
 
@@ -75,29 +75,36 @@ impl Parser {
         decl
     }
 
-    fn parse_stmt(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_stmt(&mut self, is_break_allowed: bool) -> Result<Stmt, ParserError> {
         match self.peek() {
-            Token::If(_) => self.parse_if_stmt(),
+            Token::If(_) => self.parse_if_stmt(is_break_allowed),
             Token::While(_) => self.parse_while_stmt(),
             Token::For(_) => self.parse_for_stmt(),
+            Token::Break(line) => {
+                if is_break_allowed {
+                    self.parse_break_stmt()
+                } else {
+                    error("break not allowed in this context (there is no enclosing loop to break out of)", line)
+                }
+            }
             Token::Print(_) => self.parse_print_stmt(),
-            Token::LeftBrace(_) => self.parse_block(),
+            Token::LeftBrace(_) => self.parse_block(is_break_allowed),
             _ => self.parse_expr_stmt(),
         }
     }
 
-    fn parse_if_stmt(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_if_stmt(&mut self, is_break_allowed: bool) -> Result<Stmt, ParserError> {
         // consume if token
         self.next();
         self.expect_left_paren("after if")?;
         let condition = self.parse_expr(0)?;
         self.expect_right_paren("after if condition")?;
-        let then_branch = self.parse_stmt()?;
+        let then_branch = self.parse_stmt(is_break_allowed)?;
 
         let mut else_branch = None;
         if let Token::Else(_) = self.peek() {
             self.next();
-            let eb = self.parse_stmt()?;
+            let eb = self.parse_stmt(is_break_allowed)?;
             else_branch = Some(Box::new(eb));
         }
 
@@ -110,7 +117,7 @@ impl Parser {
         self.expect_left_paren("after while")?;
         let condition = self.parse_expr(0)?;
         self.expect_right_paren("after while condition")?;
-        let stmt = self.parse_stmt()?;
+        let stmt = self.parse_stmt(true)?;
 
         Ok(Stmt::While(condition, Box::new(stmt)))
     }
@@ -142,7 +149,7 @@ impl Parser {
         };
         self.expect_right_paren("after for condition")?;
 
-        let for_stmt = self.parse_stmt()?;
+        let for_stmt = self.parse_stmt(true)?;
         let while_stmt = if let Some(i) = increment {
             Stmt::Block(vec![for_stmt, Stmt::Expr(i)])
         } else {
@@ -153,6 +160,12 @@ impl Parser {
         Ok(Stmt::Block(block_stmts))
     }
 
+    fn parse_break_stmt(&mut self) -> Result<Stmt, ParserError> {
+        self.next();
+        self.expect_semi("after break")?;
+        Ok(Stmt::Break)
+    }
+
     fn parse_print_stmt(&mut self) -> Result<Stmt, ParserError> {
         // consume print token
         self.next();
@@ -161,7 +174,7 @@ impl Parser {
         Ok(Stmt::Print(expr))
     }
 
-    fn parse_block(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_block(&mut self, is_break_allowed: bool) -> Result<Stmt, ParserError> {
         // consume {
         self.next();
 
@@ -173,7 +186,7 @@ impl Parser {
                 _ => (),
             };
 
-            stmts.push(self.parse_decl()?);
+            stmts.push(self.parse_decl(is_break_allowed)?);
         }
 
         match self.next() {
@@ -529,5 +542,16 @@ mod tests {
             print "y";
         "#;
         assert_eq!("(block (while true (print \"y\")))", sexp(script));
+    }
+
+    #[test]
+    fn test_break() {
+        let script = r#"
+        while (true) break;
+        "#;
+        assert_eq!("(while true break)", sexp(script));
+
+        assert!(parse("break;").is_err());
+        assert!(parse("if (1) break;").is_err())
     }
 }

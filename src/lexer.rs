@@ -51,6 +51,7 @@ pub enum Token {
     True(Line),
     Var(Line),
     While(Line),
+    Break(Line),
     Eof(Line),
 
     // Error
@@ -135,6 +136,7 @@ impl Token {
             | Token::While(line)
             | Token::Eof(line)
             | Token::Query(line)
+            | Token::Break(line)
             | Token::Error(line, _) => *line,
         }
     }
@@ -181,6 +183,7 @@ impl Display for Token {
             Token::True(_) => write!(f, "true"),
             Token::Var(_) => write!(f, "var"),
             Token::While(_) => write!(f, "while"),
+            Token::Break(_) => write!(f, "break"),
             Token::Eof(_) => write!(f, "EOF"),
             Token::Colon(_) => write!(f, ":"),
             Token::Query(_) => write!(f, "?"),
@@ -364,6 +367,7 @@ impl Lexer {
             "true" => Token::True(self.line),
             "var" => Token::Var(self.line),
             "while" => Token::While(self.line),
+            "break" => Token::Break(self.line),
             _ => Token::Identifier(self.line, word.to_string()),
         }
     }

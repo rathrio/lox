@@ -161,6 +161,7 @@ impl<Out: Write> Interpreter<Out> {
                     self.interpret_stmt(stmt, env.clone())?;
                 }
             }
+            Stmt::Break => todo!(),
         };
 
         Ok(())
@@ -638,6 +639,21 @@ mod tests {
         let script = r#"
         var a = 3;
         while (a >= 0) {
+            print a;
+            a = a - 1;
+        }
+        "#;
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "3\n2\n1\n0".into());
+    }
+
+    #[test]
+    fn test_break() {
+        let mut out = Vec::new();
+        let script = r#"
+        var a = 3;
+        while (true) {
+            if (a >= 0) break;
             print a;
             a = a - 1;
         }

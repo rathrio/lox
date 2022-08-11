@@ -13,6 +13,7 @@ pub enum Stmt {
     Block(Vec<Stmt>),
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
+    Break,
 }
 
 #[derive(Debug)]
@@ -74,6 +75,7 @@ pub fn sexp_stmt(s: &Stmt) -> String {
         Stmt::While(condition, stmt) => {
             format!("(while {} {})", sexp_expr(condition), sexp_stmt(stmt))
         }
+        Stmt::Break => "break".to_string(),
     }
 }
 
