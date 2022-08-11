@@ -106,7 +106,10 @@ impl Parser {
             Token::RightParen(_) => (),
             t => {
                 return error(
-                    format!("expected \")\" after if condition, but got \"{}\" instead", t),
+                    format!(
+                        "expected \")\" after if condition, but got \"{}\" instead",
+                        t
+                    ),
                     t.line(),
                 )?
             }
@@ -267,23 +270,22 @@ impl Parser {
 fn infix_binding_power(op: &Token) -> Result<(u8, u8), ParserError> {
     match op {
         Token::Equal(_) => Ok((1, 2)),
-        Token::Comma(_) => Ok((2, 3)),
-        Token::Query(_) => Ok((5, 4)),
-        Token::BangEqual(_) | Token::EqualEqual(_) => Ok((5, 6)),
+        Token::Comma(_) => Ok((3, 4)),
+        Token::Or(_) | Token::And(_) => Ok((5, 6)),
+        Token::Query(_) => Ok((8, 7)),
+        Token::BangEqual(_) | Token::EqualEqual(_) => Ok((9, 10)),
         Token::Greater(_) | Token::GreaterEqual(_) | Token::Less(_) | Token::LessEqual(_) => {
-            Ok((7, 8))
+            Ok((11, 12))
         }
-        Token::Minus(_) => Ok((9, 10)),
-        Token::Plus(_) => Ok((9, 10)),
-        Token::Slash(_) => Ok((11, 12)),
-        Token::Star(_) => Ok((11, 12)),
+        Token::Minus(_) | Token::Plus(_) => Ok((13, 14)),
+        Token::Slash(_) | Token::Star(_) => Ok((15, 16)),
         t => error(format!("invalid infix operator {}", t), t.line()),
     }
 }
 
 fn prefix_binding_power(op: &Token) -> Result<((), u8), ParserError> {
     match op {
-        Token::Minus(_) | Token::Bang(_) => Ok(((), 13)),
+        Token::Minus(_) | Token::Bang(_) => Ok(((), 17)),
         t => error(format!("invalid prefix operator {}", t), t.line()),
     }
 }
@@ -438,5 +440,10 @@ mod tests {
             print "ho";
         "#;
         assert_eq!("(if 42 (print \"hey\") (print \"ho\"))", sexp(script));
+    }
+
+    #[test]
+    fn test_logical_expr() {
+        assert_eq!("(or 42 (+ 4 2))", sexp_expr("42 or 4 + 2"));
     }
 }

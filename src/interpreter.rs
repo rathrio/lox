@@ -31,6 +31,10 @@ impl Value {
             Value::Nil => false,
         }
     }
+
+    fn is_falsey(&self) -> bool {
+        !self.is_truthy()
+    }
 }
 
 impl Display for Value {
@@ -250,6 +254,26 @@ impl<Out: Write> Interpreter<Out> {
         env: ShareableEnv,
     ) -> Result<Value, RuntimeError> {
         let left = self.interpret_expr(lhs, env.clone())?;
+
+        // Handle short-circuiting logical operators
+        match op {
+            Token::And(_) => {
+                if left.is_falsey() {
+                    return Ok(left);
+                } else {
+                    return self.interpret_expr(rhs, env);
+                }
+            }
+            Token::Or(_) => {
+                if left.is_truthy() {
+                    return Ok(left);
+                } else {
+                    return self.interpret_expr(rhs, env);
+                }
+            }
+            _ => (),
+        }
+
         let right = self.interpret_expr(rhs, env)?;
 
         match op {
@@ -582,5 +606,24 @@ mod tests {
         "#;
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "\"chabis\"".into());
+    }
+
+    #[test]
+    fn test_logical() {
+        assert_eq!(Value::Number(42.0), interpret_expr("nil or 42").unwrap());
+        assert_eq!(Value::Number(12.0), interpret_expr("true and 12").unwrap());
+        assert_eq!(Value::Bool(false), interpret_expr("false and 12").unwrap());
+    }
+
+    #[test]
+    fn test_logical_2() {
+        let mut out = Vec::new();
+        let script = r#"
+        var a = nil;
+        var b = a or 42;
+        print b;
+        "#;
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "42".into());
     }
 }
