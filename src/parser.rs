@@ -165,8 +165,20 @@ impl Parser {
             }
             Token::Print(_) => self.parse_print_stmt(),
             Token::LeftBrace(_) => self.parse_block(is_break_allowed),
+            Token::Return(_) => self.parse_return(),
             _ => self.parse_expr_stmt(),
         }
+    }
+
+    fn parse_return(&mut self) -> Result<Stmt, ParserError> {
+        // conume return
+        let ret = self.next();
+        let expr = match self.peek() {
+            Token::Semicolon(_) => Expr::Nil,
+            _ => self.parse_expr(0)?,
+        };
+        self.expect_semi("after return statement")?;
+        Ok(Stmt::Return(ret, expr))
     }
 
     fn parse_if_stmt(&mut self, is_break_allowed: bool) -> Result<Stmt, ParserError> {
@@ -655,5 +667,15 @@ mod tests {
             "(fun add (a b) ((= b (+ b 1)) (print (+ a b))))",
             sexp(script)
         );
+    }
+
+    #[test]
+    fn test_return() {
+        let script = r#"
+        fun add(a, b) {
+            return a + b;
+        }
+        "#;
+        assert_eq!("(fun add (a b) ((return (+ a b))))", sexp(script));
     }
 }

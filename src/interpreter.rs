@@ -221,6 +221,7 @@ impl<Out: Write> Interpreter<Out> {
                 );
                 Ok(Flow::Continue(()))
             }
+            Stmt::Return(_, _expr) => todo!(),
         }
     }
 

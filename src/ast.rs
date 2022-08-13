@@ -14,6 +14,7 @@ pub enum Stmt {
     Block(Vec<Stmt>),
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
+    Return(Token, Expr),
     Break,
 }
 
@@ -107,6 +108,7 @@ pub fn sexp_stmt(s: &Stmt) -> String {
                     .join(" ")
             )
         }
+        Stmt::Return(_, expr) => format!("(return {})", sexp_expr(expr)),
     }
 }
 
