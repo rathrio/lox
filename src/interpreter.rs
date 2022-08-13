@@ -5,12 +5,52 @@ use crate::{
     lexer::{Line, Token},
 };
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Number(f64),
     Str(String),
     Bool(bool),
+    Fun(String, Vec<Token>, Vec<Stmt>),
     Nil,
+}
+
+impl TryInto<Function> for Value {
+    type Error = RuntimeError;
+
+    fn try_into(self) -> Result<Function, Self::Error> {
+        match self {
+            Value::Fun(name, params, body) => Ok(Function { name, params, body }),
+            v => error(format!("{} is not a function", v), 9999),
+        }
+    }
+}
+
+pub struct Function {
+    pub name: String,
+    pub params: Vec<Token>,
+    body: Vec<Stmt>,
+}
+
+impl Function {
+    fn call<Out: Write>(
+        &self,
+        interpreter: &mut Interpreter<Out>,
+        mut args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        let mut local_env = Env::new(Some(interpreter.env.clone()));
+
+        for param in self.params.iter() {
+            let v = args.remove(0);
+            local_env.define(param.to_string(), v);
+        }
+
+        interpreter.interpret_stmts(&self.body, Rc::new(RefCell::new(local_env)))?;
+        Ok(Value::Nil)
+    }
+
+    fn arity(&self) -> usize {
+        self.params.len()
+    }
 }
 
 impl Value {
@@ -27,7 +67,7 @@ impl Value {
     fn is_truthy(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
-            Value::Number(_) | Value::Str(_) => true,
+            Value::Number(_) | Value::Str(_) | Value::Fun(_, _, _) => true,
             Value::Nil => false,
         }
     }
@@ -44,6 +84,7 @@ impl Display for Value {
             Value::Str(s) => write!(f, "{:?}", s),
             Value::Bool(b) => b.fmt(f),
             Value::Nil => write!(f, "nil"),
+            Value::Fun(name, _, _) => write!(f, "<fn {}>", name),
         }
     }
 }
@@ -172,6 +213,14 @@ impl<Out: Write> Interpreter<Out> {
                 Ok(Flow::Continue(()))
             }
             Stmt::Break => Ok(Flow::Break(())),
+            Stmt::FunDecl(name, params, stmts) => {
+                let name = name.to_string();
+                env.borrow_mut().define(
+                    name.clone(),
+                    Value::Fun(name, params.to_vec(), stmts.clone()),
+                );
+                Ok(Flow::Continue(()))
+            }
         }
     }
 
@@ -181,7 +230,7 @@ impl<Out: Write> Interpreter<Out> {
     }
 
     fn interpret_var_decl(
-        &self,
+        &mut self,
         name: &Token,
         expr: &Expr,
         env: ShareableEnv,
@@ -205,7 +254,11 @@ impl<Out: Write> Interpreter<Out> {
         Ok(())
     }
 
-    pub fn interpret_expr(&self, expr: &Expr, env: ShareableEnv) -> Result<Value, RuntimeError> {
+    pub fn interpret_expr(
+        &mut self,
+        expr: &Expr,
+        env: ShareableEnv,
+    ) -> Result<Value, RuntimeError> {
         match expr {
             Expr::Number(n) => Ok(Value::Number(*n)),
             Expr::Str(s) => Ok(Value::Str(s.into())),
@@ -230,12 +283,32 @@ impl<Out: Write> Interpreter<Out> {
                 }
                 t => error(format!("invalid LHS for assignment \"{}\"", t), t.line()),
             },
-            Expr::Call(_, _, _) => todo!(),
+            Expr::Call(callee, t, args) => {
+                let function: Function = self.interpret_expr(callee, env.clone())?.try_into()?;
+                let mut arguments = Vec::new();
+                for arg_expr in args {
+                    arguments.push(self.interpret_expr(arg_expr, env.clone())?);
+                }
+
+                if arguments.len() != function.arity() {
+                    return error(
+                        format!(
+                            "{} expected {} arguments, provided {}",
+                            function.name,
+                            function.arity(),
+                            arguments.len()
+                        ),
+                        t.line(),
+                    );
+                }
+
+                function.call(self, arguments)
+            }
         }
     }
 
     fn interpret_unary_expr(
-        &self,
+        &mut self,
         op: &Token,
         expr: &Expr,
         env: ShareableEnv,
@@ -262,7 +335,7 @@ impl<Out: Write> Interpreter<Out> {
     }
 
     fn interpret_binary_expr(
-        &self,
+        &mut self,
         lhs: &Expr,
         op: &Token,
         rhs: &Expr,
@@ -342,7 +415,7 @@ impl<Out: Write> Interpreter<Out> {
     }
 
     fn interpret_ternary_expr(
-        &self,
+        &mut self,
         condition_expr: &Expr,
         conclusion_expr: &Expr,
         alternate_expr: &Expr,
@@ -367,7 +440,7 @@ mod tests {
 
     fn interpret_expr(input: &str) -> Result<Value, RuntimeError> {
         let expr = Parser::parse_expr_str(input).expect("syntax error");
-        let interpreter = Interpreter::new(io::stdout());
+        let mut interpreter = Interpreter::new(io::stdout());
         let env = Rc::new(RefCell::new(Env::new(None)));
         interpreter.interpret_expr(&expr, env)
     }
@@ -669,5 +742,19 @@ mod tests {
         "#;
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "3\n2\n1\n0".into());
+    }
+
+    #[test]
+    fn test_functions() {
+        let mut out = Vec::new();
+        let script = r#"
+        fun count(n) {
+            if (n > 1) count(n - 1);
+            print n;
+        }
+        count(3);
+        "#;
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "1\n2\n3".into());
     }
 }

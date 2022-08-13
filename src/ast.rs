@@ -5,18 +5,19 @@ pub struct Program {
     pub stmts: Vec<Stmt>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
     Expr(Expr),
     Print(Expr),
     VarDecl(Token, Expr),
+    FunDecl(Token, Vec<Token>, Vec<Stmt>),
     Block(Vec<Stmt>),
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
     Break,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Number(f64),
     Str(String),
@@ -55,7 +56,7 @@ pub fn sexp_expr(e: &Expr) -> String {
         Expr::Var(name) => format!("{}", name),
         Expr::Assign(lhs, rhs) => format!("(= {} {})", lhs, sexp_expr(rhs)),
         Expr::Call(callee, _, args) => format!(
-            "(call {} {})",
+            "(call {} ({}))",
             sexp_expr(callee),
             args.iter()
                 .map(sexp_expr)
@@ -91,6 +92,21 @@ pub fn sexp_stmt(s: &Stmt) -> String {
             format!("(while {} {})", sexp_expr(condition), sexp_stmt(stmt))
         }
         Stmt::Break => "break".to_string(),
+        Stmt::FunDecl(name, params, body) => {
+            format!(
+                "(fun {} ({}) ({}))",
+                name,
+                params
+                    .iter()
+                    .map(|t| format!("{}", t))
+                    .collect::<Vec<String>>()
+                    .join(" "),
+                body.iter()
+                    .map(sexp_stmt)
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            )
+        }
     }
 }
 

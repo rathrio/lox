@@ -80,6 +80,7 @@ impl Parser {
     fn parse_decl(&mut self, is_break_allowed: bool) -> Result<Stmt, ParserError> {
         match self.peek() {
             Token::Var(_) => self.parse_var_decl(),
+            Token::Fun(_) => self.parse_fun_decl(),
             _ => self.parse_stmt(is_break_allowed),
         }
     }
@@ -99,6 +100,55 @@ impl Parser {
 
         self.expect_semi("after variable declaration")?;
         decl
+    }
+
+    fn parse_fun_decl(&mut self) -> Result<Stmt, ParserError> {
+        // consume fun token
+        self.next();
+        self.parse_function()
+    }
+
+    fn parse_function(&mut self) -> Result<Stmt, ParserError> {
+        let name = self.parse_identifier()?;
+
+        self.expect_left_paren("after function name")?;
+        let mut params = Vec::new();
+        loop {
+            if let Token::RightParen(_) = self.peek() {
+                break;
+            }
+
+            params.push(self.parse_identifier()?);
+            if params.len() >= 255 {
+                return error("can't have more than 255 parameters", name.line());
+            }
+
+            // Let's allow trailing commas
+            if let Token::Comma(_) = self.peek() {
+                self.next();
+            }
+        }
+        // consume )
+        self.next();
+
+        let body = match self.peek() {
+            Token::LeftBrace(_) => self.parse_block(false)?,
+            t => return error("expected { before function body", t.line()),
+        };
+
+        let stmts = match body {
+            Stmt::Block(list) => list,
+            _ => unreachable!(),
+        };
+
+        Ok(Stmt::FunDecl(name, params, stmts))
+    }
+
+    fn parse_identifier(&mut self) -> Result<Token, ParserError> {
+        match self.next() {
+            t if matches!(t, Token::Identifier(_, _)) => Ok(t),
+            t => error(format!("expected an identifier, got {:?}", t), t.line()),
+        }
     }
 
     fn parse_stmt(&mut self, is_break_allowed: bool) -> Result<Stmt, ParserError> {
@@ -284,7 +334,7 @@ impl Parser {
                 break;
             }
 
-            if let Token::LeftParen(_) = op {
+            if let Token::LeftParen(line) = op {
                 // consume (
                 self.next();
                 let args = if let Token::RightParen(_) = self.peek() {
@@ -292,6 +342,11 @@ impl Parser {
                 } else {
                     try_into_args(self.parse_expr(0)?)?
                 };
+
+                if args.len() >= 255 {
+                    return error("can't have more than 255 arguments", line);
+                }
+
                 // consume )
                 self.expect_right_paren("after call args")?;
                 return Ok(Expr::Call(Box::new(expr), op, args));
@@ -583,8 +638,22 @@ mod tests {
 
     #[test]
     fn test_call() {
-        assert_eq!("(call foo )", sexp_expr("foo()"));
-        assert_eq!("(call add 1 2)", sexp_expr("add(1, 2)"));
-        assert_eq!("(call add 1 2 (! 42))", sexp_expr("add(1, 2, !42)"));
+        assert_eq!("(call foo ())", sexp_expr("foo()"));
+        assert_eq!("(call add (1 2))", sexp_expr("add(1, 2)"));
+        assert_eq!("(call add (1 2 (! 42)))", sexp_expr("add(1, 2, !42)"));
+    }
+
+    #[test]
+    fn test_fun_decl() {
+        let script = r#"
+        fun add(a, b) {
+            b = b + 1;
+            print a + b;
+        }
+        "#;
+        assert_eq!(
+            "(fun add (a b) ((= b (+ b 1)) (print (+ a b))))",
+            sexp(script)
+        );
     }
 }
