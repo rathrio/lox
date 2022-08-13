@@ -230,6 +230,7 @@ impl<Out: Write> Interpreter<Out> {
                 }
                 t => error(format!("invalid LHS for assignment \"{}\"", t), t.line()),
             },
+            Expr::Call(_, _, _) => todo!(),
         }
     }
 

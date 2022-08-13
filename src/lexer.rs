@@ -77,6 +77,7 @@ impl Token {
                 | Token::Comma(_)
                 | Token::Query(_)
                 | Token::Equal(_)
+                | Token::LeftParen(_)
         )
     }
 

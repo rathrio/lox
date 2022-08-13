@@ -22,6 +22,32 @@ fn error<T>(report: impl Into<String>, line: Line) -> Result<T, ParserError> {
     Err(ParserError::new(report, line))
 }
 
+fn try_into_assign(expr: Expr, line: Line) -> Result<Expr, ParserError> {
+    if let Expr::Binary(lhs, Token::Equal(_), rhs) = expr {
+        if let Expr::Var(name) = *lhs {
+            return Ok(Expr::Assign(name, rhs));
+        }
+    }
+
+    Err(ParserError::new("invalid LHS in assignment", line))
+}
+
+/// Flattens a comma expression tree into an expression list.
+fn try_into_args(expr: Expr) -> Result<Vec<Expr>, ParserError> {
+    match expr {
+        Expr::Binary(lhs, Token::Comma(_), rhs) => {
+            if lhs.is_comma() {
+                let mut args = try_into_args(*lhs)?;
+                args.push(*rhs);
+                Ok(args)
+            } else {
+                Ok(vec![*lhs, *rhs])
+            }
+        }
+        e => Ok(vec![e]),
+    }
+}
+
 pub struct Parser {
     tokens: Vec<Token>,
 }
@@ -208,7 +234,7 @@ impl Parser {
                 let lhs = self.parse_expr(bp)?;
                 Ok(Expr::Unary(op, Box::new(lhs)))
             }
-            op if op.is_infix_op() => {
+            op if !matches!(op, Token::LeftParen(_)) && op.is_infix_op() => {
                 // Attempt to consume RHS for ease of error recovery
                 let (l_bp, r_bp) = infix_binding_power(&op)?;
                 if l_bp >= min_bp {
@@ -258,6 +284,19 @@ impl Parser {
                 break;
             }
 
+            if let Token::LeftParen(_) = op {
+                // consume (
+                self.next();
+                let args = if let Token::RightParen(_) = self.peek() {
+                    Vec::new()
+                } else {
+                    try_into_args(self.parse_expr(0)?)?
+                };
+                // consume )
+                self.expect_right_paren("after call args")?;
+                return Ok(Expr::Call(Box::new(expr), op, args));
+            }
+
             // consume the operator we peeked at the beginning of the loop
             self.next();
 
@@ -274,7 +313,7 @@ impl Parser {
                 expr = Expr::Binary(Box::new(expr), op.clone(), Box::new(rhs));
 
                 if let Token::Equal(_) = op {
-                    expr = self.try_into_assign(expr, op.line())?;
+                    expr = try_into_assign(expr, op.line())?;
                 }
             }
         }
@@ -288,16 +327,6 @@ impl Parser {
 
     fn next(&mut self) -> Token {
         self.tokens.drain(0..1).next().expect("overshot EOF")
-    }
-
-    fn try_into_assign(&self, expr: Expr, line: Line) -> Result<Expr, ParserError> {
-        if let Expr::Binary(lhs, Token::Equal(_), rhs) = expr {
-            if let Expr::Var(name) = *lhs {
-                return Ok(Expr::Assign(name, rhs));
-            }
-        }
-
-        Err(ParserError::new("invalid LHS in assignment", line))
     }
 
     fn expect_left_paren(&mut self, pos_msg: &str) -> Result<(), ParserError> {
@@ -343,13 +372,14 @@ fn infix_binding_power(op: &Token) -> Result<(u8, u8), ParserError> {
         }
         Token::Minus(_) | Token::Plus(_) => Ok((13, 14)),
         Token::Slash(_) | Token::Star(_) => Ok((15, 16)),
+        Token::LeftParen(_) => Ok((17, 18)),
         t => error(format!("invalid infix operator {}", t), t.line()),
     }
 }
 
 fn prefix_binding_power(op: &Token) -> Result<((), u8), ParserError> {
     match op {
-        Token::Minus(_) | Token::Bang(_) => Ok(((), 17)),
+        Token::Minus(_) | Token::Bang(_) => Ok(((), 19)),
         t => error(format!("invalid prefix operator {}", t), t.line()),
     }
 }
@@ -427,6 +457,8 @@ mod tests {
     #[test]
     fn test_comma_expr() {
         assert_eq!("(, (+ 1 3) (+ 2 (/ 3 2)))", sexp_expr("1 + 3, 2 + 3 / 2"));
+        assert_eq!("(, (, 1 2) 3)", sexp_expr("1, 2, 3"));
+        assert_eq!("(, (, (, 1 2) 3) (! 42))", sexp_expr("1, 2, 3, !42"));
     }
 
     #[test]
@@ -547,5 +579,12 @@ mod tests {
 
         assert!(parse("break;").is_err());
         assert!(parse("if (1) break;").is_err())
+    }
+
+    #[test]
+    fn test_call() {
+        assert_eq!("(call foo )", sexp_expr("foo()"));
+        assert_eq!("(call add 1 2)", sexp_expr("add(1, 2)"));
+        assert_eq!("(call add 1 2 (! 42))", sexp_expr("add(1, 2, !42)"));
     }
 }

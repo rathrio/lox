@@ -28,6 +28,13 @@ pub enum Expr {
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
     Var(Token),
     Assign(Token, Box<Expr>),
+    Call(Box<Expr>, Token, Vec<Expr>),
+}
+
+impl Expr {
+    pub fn is_comma(&self) -> bool {
+        matches!(self, Expr::Binary(_, Token::Comma(_), _))
+    }
 }
 
 pub fn sexp_expr(e: &Expr) -> String {
@@ -47,6 +54,14 @@ pub fn sexp_expr(e: &Expr) -> String {
         ),
         Expr::Var(name) => format!("{}", name),
         Expr::Assign(lhs, rhs) => format!("(= {} {})", lhs, sexp_expr(rhs)),
+        Expr::Call(callee, _, args) => format!(
+            "(call {} {})",
+            sexp_expr(callee),
+            args.iter()
+                .map(sexp_expr)
+                .collect::<Vec<String>>()
+                .join(" ")
+        ),
     }
 }
 
@@ -104,7 +119,12 @@ fn rpn(e: &Expr) -> String {
             rpn(conclusion),
             rpn(alternate)
         ),
-        Expr::Assign(lhs, rhs) => format!("{} {} =", sexp_expr(rhs), lhs),
+        Expr::Assign(lhs, rhs) => format!("{} {} =", rpn(rhs), lhs),
+        Expr::Call(callee, _, args) => format!(
+            "{} {} call",
+            args.iter().map(rpn).collect::<Vec<String>>().join(" "),
+            rpn(callee)
+        ),
     }
 }
 
