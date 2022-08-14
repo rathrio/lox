@@ -10,17 +10,20 @@ pub enum Value {
     Number(f64),
     Str(String),
     Bool(bool),
-    Fun(String, Vec<Token>, Vec<Stmt>),
+    Fun(String, Vec<Token>, Vec<Stmt>, ShareableEnv),
     Nil,
 }
 
-impl TryInto<Function> for Value {
-    type Error = RuntimeError;
-
-    fn try_into(self) -> Result<Function, Self::Error> {
+impl Value {
+    fn try_into_fn(self, line: Line) -> Result<Function, RuntimeError> {
         match self {
-            Value::Fun(name, params, body) => Ok(Function { name, params, body }),
-            v => error(format!("{} is not a function", v), 9999),
+            Value::Fun(name, params, body, closure) => Ok(Function {
+                name,
+                params,
+                body,
+                closure,
+            }),
+            v => error(format!("{} is not a function", v), line),
         }
     }
 }
@@ -29,6 +32,7 @@ pub struct Function {
     pub name: String,
     pub params: Vec<Token>,
     body: Vec<Stmt>,
+    closure: ShareableEnv,
 }
 
 impl Function {
@@ -37,7 +41,7 @@ impl Function {
         interpreter: &mut Interpreter<Out>,
         mut args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
-        let mut local_env = Env::new(Some(interpreter.env.clone()));
+        let mut local_env = Env::new(Some(self.closure.clone()));
 
         for param in self.params.iter() {
             let v = args.remove(0);
@@ -69,7 +73,7 @@ impl Value {
     fn is_truthy(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
-            Value::Number(_) | Value::Str(_) | Value::Fun(_, _, _) => true,
+            Value::Number(_) | Value::Str(_) | Value::Fun(_, _, _, _) => true,
             Value::Nil => false,
         }
     }
@@ -86,7 +90,7 @@ impl Display for Value {
             Value::Str(s) => write!(f, "{:?}", s),
             Value::Bool(b) => b.fmt(f),
             Value::Nil => write!(f, "nil"),
-            Value::Fun(name, _, _) => write!(f, "<fn {}>", name),
+            Value::Fun(name, _, _, _) => write!(f, "<fn {}>", name),
         }
     }
 }
@@ -112,7 +116,7 @@ fn error<T>(report: impl Into<String>, line: Line) -> Result<T, RuntimeError> {
 
 type ShareableEnv = Rc<RefCell<Env>>;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Env {
     pub enclosing: Option<ShareableEnv>,
     pub values: HashMap<String, Value>,
@@ -225,7 +229,7 @@ impl<Out: Write> Interpreter<Out> {
                 let name = name.to_string();
                 env.borrow_mut().define(
                     name.clone(),
-                    Value::Fun(name, params.to_vec(), stmts.clone()),
+                    Value::Fun(name, params.to_vec(), stmts.clone(), env.clone()),
                 );
                 Ok(Flow::Continue)
             }
@@ -296,7 +300,10 @@ impl<Out: Write> Interpreter<Out> {
                 t => error(format!("invalid LHS for assignment \"{}\"", t), t.line()),
             },
             Expr::Call(callee, t, args) => {
-                let function: Function = self.interpret_expr(callee, env.clone())?.try_into()?;
+                let function: Function = self
+                    .interpret_expr(callee, env.clone())?
+                    .try_into_fn(t.line())?;
+
                 let mut arguments = Vec::new();
                 for arg_expr in args {
                     arguments.push(self.interpret_expr(arg_expr, env.clone())?);
@@ -784,5 +791,27 @@ mod tests {
         "#;
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "7".into());
+    }
+
+    #[test]
+    fn test_local_functions() {
+        let mut out = Vec::new();
+        let script = r#"
+        fun makeCounter() {
+            var i = 0;
+            fun count() {
+              i = i + 1;
+              print i;
+            }
+
+            return count;
+        }
+
+        var counter = makeCounter();
+        counter();
+        counter();
+        "#;
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "1\n2".into());
     }
 }
