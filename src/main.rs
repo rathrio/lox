@@ -12,13 +12,13 @@ pub struct Args {
 fn run(interpreter: &mut Interpreter<io::Stdout>, script: String) {
     let script = script.trim();
     if script.ends_with(';') || script.ends_with('}') {
-        run_statment(script.into(), interpreter);
+        run_statement(script.into(), interpreter);
     } else {
         run_expr(script.into(), interpreter);
     }
 }
 
-fn run_statment(script: String, interpreter: &mut Interpreter<io::Stdout>) {
+fn run_statement(script: String, interpreter: &mut Interpreter<io::Stdout>) {
     match Parser::parse_str(&script) {
         Ok(program) => match interpreter.interpret(&program) {
             Ok(_) => (),

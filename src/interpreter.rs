@@ -38,7 +38,7 @@ pub struct Function {
 impl Function {
     fn call<Out: Write>(
         &self,
-        interpreter: &mut Interpreter<Out>,
+        i: &mut Interpreter<Out>,
         mut args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
         let mut local_env = Env::new(Some(self.closure.clone()));
@@ -48,8 +48,8 @@ impl Function {
             local_env.define(param.to_string(), v);
         }
 
-        match interpreter.interpret_stmts(&self.body, Rc::new(RefCell::new(local_env)))? {
-            Flow::Return(v) => Ok(v),
+        match i.interpret_stmts(&self.body, Rc::new(RefCell::new(local_env)))? {
+            ControlFlow::Return(v) => Ok(v),
             _ => Ok(Value::Nil),
         }
     }
@@ -156,7 +156,7 @@ impl Env {
     }
 }
 
-pub enum Flow {
+pub enum ControlFlow {
     Continue,
     Break,
     Return(Value),
@@ -174,73 +174,101 @@ impl<Out: Write> Interpreter<Out> {
         Self { out, env }
     }
 
-    pub fn interpret(&mut self, program: &Program) -> Result<Flow, RuntimeError> {
+    pub fn interpret(&mut self, program: &Program) -> Result<ControlFlow, RuntimeError> {
         self.interpret_stmts(&program.stmts, self.env.clone())
     }
 
-    fn interpret_stmts(&mut self, stmts: &[Stmt], env: ShareableEnv) -> Result<Flow, RuntimeError> {
+    fn interpret_stmts(
+        &mut self,
+        stmts: &[Stmt],
+        env: ShareableEnv,
+    ) -> Result<ControlFlow, RuntimeError> {
         for stmt in stmts {
             match self.interpret_stmt(stmt, env.clone())? {
-                Flow::Break => return Ok(Flow::Break),
-                Flow::Return(v) => return Ok(Flow::Return(v)),
+                ControlFlow::Break => return Ok(ControlFlow::Break),
+                ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
                 _ => (),
             }
         }
 
-        Ok(Flow::Continue)
+        Ok(ControlFlow::Continue)
     }
 
-    fn interpret_stmt(&mut self, stmt: &Stmt, env: ShareableEnv) -> Result<Flow, RuntimeError> {
+    fn interpret_stmt(
+        &mut self,
+        stmt: &Stmt,
+        env: ShareableEnv,
+    ) -> Result<ControlFlow, RuntimeError> {
         match stmt {
             Stmt::Expr(expr) => {
                 self.interpret_expr(expr, env)?;
-                Ok(Flow::Continue)
+                Ok(ControlFlow::Continue)
             }
             Stmt::Print(expr) => {
                 self.interpret_print(expr, env)?;
-                Ok(Flow::Continue)
+                Ok(ControlFlow::Continue)
             }
             Stmt::VarDecl(name, expr) => {
                 self.interpret_var_decl(name, expr, env)?;
-                Ok(Flow::Continue)
+                Ok(ControlFlow::Continue)
             }
             Stmt::Block(stmts) => self.interpret_block(stmts, env),
             Stmt::If(condition, then_branch, else_branch) => {
-                let value = self.interpret_expr(condition, env.clone())?;
-                if value.is_truthy() {
-                    self.interpret_stmt(then_branch, env)
-                } else if let Some(b) = else_branch {
-                    self.interpret_stmt(b, env)
-                } else {
-                    Ok(Flow::Continue)
-                }
+                self.interpret_if(condition, env, then_branch, else_branch)
             }
-            Stmt::While(condition, stmt) => {
-                while self.interpret_expr(condition, env.clone())?.is_truthy() {
-                    if let Flow::Break = self.interpret_stmt(stmt, env.clone())? {
-                        break;
-                    }
-                }
-
-                Ok(Flow::Continue)
-            }
-            Stmt::Break => Ok(Flow::Break),
-            Stmt::FunDecl(name, params, stmts) => {
-                let name = name.to_string();
-                env.borrow_mut().define(
-                    name.clone(),
-                    Value::Fun(name, params.to_vec(), stmts.clone(), env.clone()),
-                );
-                Ok(Flow::Continue)
-            }
-            Stmt::Return(_, expr) => {
-                let v = self.interpret_expr(expr, env)?;
-                Ok(Flow::Return(v))
-            }
+            Stmt::While(condition, stmt) => self.interpret_while(condition, env, stmt),
+            Stmt::Break => Ok(ControlFlow::Break),
+            Stmt::FunDecl(name, params, stmts) => interpret_fun_decl(name, env, params, stmts),
+            Stmt::Return(_, expr) => self.interpret_return(expr, env),
         }
     }
 
-    fn interpret_block(&mut self, stmts: &[Stmt], env: ShareableEnv) -> Result<Flow, RuntimeError> {
+    fn interpret_return(
+        &mut self,
+        expr: &Expr,
+        env: ShareableEnv,
+    ) -> Result<ControlFlow, RuntimeError> {
+        Ok(ControlFlow::Return(self.interpret_expr(expr, env)?))
+    }
+
+    fn interpret_while(
+        &mut self,
+        condition: &Expr,
+        env: ShareableEnv,
+        stmt: &Stmt,
+    ) -> Result<ControlFlow, RuntimeError> {
+        while self.interpret_expr(condition, env.clone())?.is_truthy() {
+            if let ControlFlow::Break = self.interpret_stmt(stmt, env.clone())? {
+                break;
+            }
+        }
+
+        Ok(ControlFlow::Continue)
+    }
+
+    fn interpret_if(
+        &mut self,
+        condition: &Expr,
+        env: ShareableEnv,
+        then_branch: &Stmt,
+        else_branch: &Option<Box<Stmt>>,
+    ) -> Result<ControlFlow, RuntimeError> {
+        let value = self.interpret_expr(condition, env.clone())?;
+
+        if value.is_truthy() {
+            self.interpret_stmt(then_branch, env)
+        } else if let Some(b) = else_branch {
+            self.interpret_stmt(b, env)
+        } else {
+            Ok(ControlFlow::Continue)
+        }
+    }
+
+    fn interpret_block(
+        &mut self,
+        stmts: &[Stmt],
+        env: ShareableEnv,
+    ) -> Result<ControlFlow, RuntimeError> {
         let local_env = Env::new(Some(env));
         self.interpret_stmts(stmts, Rc::new(RefCell::new(local_env)))
     }
@@ -286,43 +314,60 @@ impl<Out: Write> Interpreter<Out> {
             Expr::Ternary(condition, conclusion, alternate) => {
                 self.interpret_ternary_expr(condition, conclusion, alternate, env)
             }
-            Expr::Var(name) => env
-                .borrow()
-                .get(format!("{}", name))
-                .map_err(|msg| RuntimeError::new(msg, name.line())),
-            Expr::Assign(lhs, rhs) => match lhs {
-                Token::Identifier(line, name) => {
-                    let value = self.interpret_expr(rhs, env.clone())?;
-                    env.borrow_mut()
-                        .assign(name.into(), value)
-                        .map_err(|msg| RuntimeError::new(msg, *line))
-                }
-                t => error(format!("invalid LHS for assignment \"{}\"", t), t.line()),
-            },
-            Expr::Call(callee, t, args) => {
-                let function: Function = self
-                    .interpret_expr(callee, env.clone())?
-                    .try_into_fn(t.line())?;
-
-                let mut arguments = Vec::new();
-                for arg_expr in args {
-                    arguments.push(self.interpret_expr(arg_expr, env.clone())?);
-                }
-
-                if arguments.len() != function.arity() {
-                    return error(
-                        format!(
-                            "{} expected {} arguments, provided {}",
-                            function.name,
-                            function.arity(),
-                            arguments.len()
-                        ),
-                        t.line(),
-                    );
-                }
-
-                function.call(self, arguments)
+            Expr::Var(name) => interpret_var(env, name),
+            Expr::Assign(lhs, rhs) => self.interpret_assign(lhs, rhs, env),
+            Expr::Call(callee, t, args) => self.interpret_call(callee, env, t.line(), args),
+            Expr::AnonFunDecl(params, body) => {
+                todo!("anon fun")
             }
+        }
+    }
+
+    fn interpret_call(
+        &mut self,
+        callee: &Expr,
+        env: ShareableEnv,
+        line: Line,
+        args: &[Expr],
+    ) -> Result<Value, RuntimeError> {
+        let function: Function = self
+            .interpret_expr(callee, env.clone())?
+            .try_into_fn(line)?;
+
+        let mut arguments = Vec::new();
+        for arg_expr in args {
+            arguments.push(self.interpret_expr(arg_expr, env.clone())?);
+        }
+
+        if arguments.len() != function.arity() {
+            return error(
+                format!(
+                    "{} expected {} arguments, provided {}",
+                    function.name,
+                    function.arity(),
+                    arguments.len()
+                ),
+                line,
+            );
+        }
+
+        function.call(self, arguments)
+    }
+
+    fn interpret_assign(
+        &mut self,
+        lhs: &Token,
+        rhs: &Expr,
+        env: ShareableEnv,
+    ) -> Result<Value, RuntimeError> {
+        match lhs {
+            Token::Identifier(line, name) => {
+                let value = self.interpret_expr(rhs, env.clone())?;
+                env.borrow_mut()
+                    .assign(name.into(), value)
+                    .map_err(|msg| RuntimeError::new(msg, *line))
+            }
+            t => error(format!("invalid LHS for assignment \"{}\"", t), t.line()),
         }
     }
 
@@ -450,6 +495,26 @@ impl<Out: Write> Interpreter<Out> {
     }
 }
 
+fn interpret_var(env: ShareableEnv, name: &Token) -> Result<Value, RuntimeError> {
+    env.borrow()
+        .get(format!("{}", name))
+        .map_err(|msg| RuntimeError::new(msg, name.line()))
+}
+
+fn interpret_fun_decl(
+    name: &Token,
+    env: ShareableEnv,
+    params: &[Token],
+    stmts: &[Stmt],
+) -> Result<ControlFlow, RuntimeError> {
+    let name = name.to_string();
+    env.borrow_mut().define(
+        name.clone(),
+        Value::Fun(name, params.to_vec(), stmts.to_vec(), env.clone()),
+    );
+    Ok(ControlFlow::Continue)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::parser::Parser;
@@ -464,7 +529,7 @@ mod tests {
         interpreter.interpret_expr(&expr, env)
     }
 
-    fn interpret(input: &str, out: &mut impl Write) -> Result<Flow, RuntimeError> {
+    fn interpret(input: &str, out: &mut impl Write) -> Result<ControlFlow, RuntimeError> {
         let program = Parser::parse_str(input).expect("syntax error");
         let mut interpreter = Interpreter::new(out);
         interpreter.interpret(&program)
@@ -813,5 +878,23 @@ mod tests {
         "#;
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "1\n2".into());
+    }
+
+    #[test]
+    fn test_anon_functions() {
+        let mut out = Vec::new();
+        let script = r#"
+        fun thrice(fn) {
+            for (var i = 1; i <= 3; i = i + 1) {
+              fn(i);
+            }
+          }
+
+          thrice(fun (a) {
+            print a;
+          });
+        "#;
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "1\n2\n3".into());
     }
 }

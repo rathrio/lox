@@ -31,6 +31,7 @@ pub enum Expr {
     Var(Token),
     Assign(Token, Box<Expr>),
     Call(Box<Expr>, Token, Vec<Expr>),
+    AnonFunDecl(Vec<Token>, Vec<Stmt>),
 }
 
 impl Expr {
@@ -63,6 +64,11 @@ pub fn sexp_expr(e: &Expr) -> String {
                 .map(sexp_expr)
                 .collect::<Vec<String>>()
                 .join(" ")
+        ),
+        Expr::AnonFunDecl(params, body) => format!(
+            "(fun ({}) ({}))",
+            sexp_fun_params(params),
+            sexp_fun_body(body)
         ),
     }
 }
@@ -97,19 +103,27 @@ pub fn sexp_stmt(s: &Stmt) -> String {
             format!(
                 "(fun {} ({}) ({}))",
                 name,
-                params
-                    .iter()
-                    .map(|t| format!("{}", t))
-                    .collect::<Vec<String>>()
-                    .join(" "),
-                body.iter()
-                    .map(sexp_stmt)
-                    .collect::<Vec<String>>()
-                    .join(" ")
+                sexp_fun_params(params),
+                sexp_fun_body(body)
             )
         }
         Stmt::Return(_, expr) => format!("(return {})", sexp_expr(expr)),
     }
+}
+
+fn sexp_fun_body(body: &Vec<Stmt>) -> String {
+    body.iter()
+        .map(sexp_stmt)
+        .collect::<Vec<String>>()
+        .join(" ")
+}
+
+fn sexp_fun_params(params: &Vec<Token>) -> String {
+    params
+        .iter()
+        .map(|t| format!("{}", t))
+        .collect::<Vec<String>>()
+        .join(" ")
 }
 
 pub fn sexp(p: &Program) -> String {
@@ -143,6 +157,7 @@ fn rpn(e: &Expr) -> String {
             args.iter().map(rpn).collect::<Vec<String>>().join(" "),
             rpn(callee)
         ),
+        Expr::AnonFunDecl(params, body) => "unsupported".to_string(),
     }
 }
 

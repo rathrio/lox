@@ -105,12 +105,30 @@ impl Parser {
     fn parse_fun_decl(&mut self) -> Result<Stmt, ParserError> {
         // consume fun token
         self.next();
-        self.parse_function()
+        self.parse_fun()
     }
 
-    fn parse_function(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_fun(&mut self) -> Result<Stmt, ParserError> {
         let name = self.parse_identifier()?;
+        let params = self.parse_fun_params(name.line())?;
+        let stmts = self.parse_fun_body()?;
 
+        Ok(Stmt::FunDecl(name, params, stmts))
+    }
+
+    fn parse_fun_body(&mut self) -> Result<Vec<Stmt>, ParserError> {
+        let body = match self.peek() {
+            Token::LeftBrace(_) => self.parse_block(false)?,
+            t => return error("expected { before function body", t.line()),
+        };
+        let stmts = match body {
+            Stmt::Block(list) => list,
+            _ => unreachable!(),
+        };
+        Ok(stmts)
+    }
+
+    fn parse_fun_params(&mut self, line: Line) -> Result<Vec<Token>, ParserError> {
         self.expect_left_paren("after function name")?;
         let mut params = Vec::new();
         loop {
@@ -120,7 +138,7 @@ impl Parser {
 
             params.push(self.parse_identifier()?);
             if params.len() >= 255 {
-                return error("can't have more than 255 parameters", name.line());
+                return error("can't have more than 255 parameters", line);
             }
 
             // Let's allow trailing commas
@@ -128,20 +146,8 @@ impl Parser {
                 self.next();
             }
         }
-        // consume )
         self.next();
-
-        let body = match self.peek() {
-            Token::LeftBrace(_) => self.parse_block(false)?,
-            t => return error("expected { before function body", t.line()),
-        };
-
-        let stmts = match body {
-            Stmt::Block(list) => list,
-            _ => unreachable!(),
-        };
-
-        Ok(Stmt::FunDecl(name, params, stmts))
+        Ok(params)
     }
 
     fn parse_identifier(&mut self) -> Result<Token, ParserError> {
@@ -314,6 +320,7 @@ impl Parser {
             Token::False(_) => Ok(Expr::Bool(false)),
             Token::Nil(_) => Ok(Expr::Nil),
             Token::Identifier(line, name) => Ok(Expr::Var(Token::Identifier(line, name))),
+            Token::Fun(line) => self.parse_anon_fn(line),
             Token::LeftParen(_) => {
                 let lhs = self.parse_expr(0)?;
 
@@ -386,6 +393,12 @@ impl Parser {
         }
 
         Ok(expr)
+    }
+
+    fn parse_anon_fn(&mut self, line: Line) -> Result<Expr, ParserError> {
+        let params = self.parse_fun_params(line)?;
+        let body = self.parse_fun_body()?;
+        Ok(Expr::AnonFunDecl(params, body))
     }
 
     fn peek(&self) -> Token {
@@ -677,5 +690,13 @@ mod tests {
         }
         "#;
         assert_eq!("(fun add (a b) ((return (+ a b))))", sexp(script));
+    }
+
+    #[test]
+    fn test_anon_fun() {
+        assert_eq!(
+            "(fun (x y) ((return (+ x y))))",
+            sexp_expr("fun (x, y) { return x + y; }")
+        );
     }
 }
