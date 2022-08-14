@@ -18,6 +18,8 @@
    or lambdas—an expression syntax that creates a function without binding it to a
    name. Add anonymous function syntax to Lox so that this works:
 
+   **Answer:** See `lox::interpreter::tests::test_anon_functions`.
+
    ```
    fun thrice(fn) {
       for (var i = 1; i <= 3; i = i + 1) {
@@ -37,7 +39,12 @@
    fun () {};
    ```
 
+   **Answer**:
+
    One approach: Allow it and emit warning in another phase.
+
+   I'm currently dissallowing this in the grammar. The parser provides a hint
+   that anonymous functions are not allowed in this context.
 
 3. Is this program valid?
 
@@ -50,6 +57,8 @@
    In other words, are a function’s parameters in the same scope as its local
    variables, or in an outer scope? What does Lox do? What about other languages
    you are familiar with? What do you think a language should do?
+
+   **Answer:**
 
    Some allow shadowing, some don't. I'm actually a little conflicted on this.
    Especially in dynamically typed langauges I oftentimes use some assetions

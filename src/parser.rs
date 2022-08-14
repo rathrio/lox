@@ -109,6 +109,13 @@ impl Parser {
     }
 
     fn parse_fun(&mut self) -> Result<Stmt, ParserError> {
+        if let Token::LeftParen(line) = self.peek() {
+            return error(
+                "anonymous functions cannot be declared in this context",
+                line,
+            );
+        }
+
         let name = self.parse_identifier()?;
         let params = self.parse_fun_params(name.line())?;
         let stmts = self.parse_fun_body()?;
@@ -354,21 +361,7 @@ impl Parser {
             }
 
             if let Token::LeftParen(line) = op {
-                // consume (
-                self.next();
-                let args = if let Token::RightParen(_) = self.peek() {
-                    Vec::new()
-                } else {
-                    try_into_args(self.parse_expr(0)?)?
-                };
-
-                if args.len() >= 255 {
-                    return error("can't have more than 255 arguments", line);
-                }
-
-                // consume )
-                self.expect_right_paren("after call args")?;
-                return Ok(Expr::Call(Box::new(expr), op, args));
+                return self.parse_call(line, expr, op);
             }
 
             // consume the operator we peeked at the beginning of the loop
@@ -393,6 +386,25 @@ impl Parser {
         }
 
         Ok(expr)
+    }
+
+    fn parse_call(&mut self, line: usize, expr: Expr, op: Token) -> Result<Expr, ParserError> {
+        // Consume (
+        self.next();
+
+        let args = if let Token::RightParen(_) = self.peek() {
+            Vec::new()
+        } else {
+            try_into_args(self.parse_expr(0)?)?
+        };
+
+        if args.len() >= 255 {
+            return error("can't have more than 255 arguments", line);
+        }
+
+        self.expect_right_paren("after call args")?;
+
+        Ok(Expr::Call(Box::new(expr), op, args))
     }
 
     fn parse_anon_fn(&mut self, line: Line) -> Result<Expr, ParserError> {
@@ -698,5 +710,11 @@ mod tests {
             "(fun (x y) ((return (+ x y))))",
             sexp_expr("fun (x, y) { return x + y; }")
         );
+    }
+
+    #[test]
+    fn test_anon_functions_as_expr_stmt() {
+        let script = "fun () {};";
+        assert!(parse(script).is_err());
     }
 }

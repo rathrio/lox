@@ -11,6 +11,7 @@ pub enum Value {
     Str(String),
     Bool(bool),
     Fun(String, Vec<Token>, Vec<Stmt>, ShareableEnv),
+    AnonFun(Vec<Token>, Vec<Stmt>, ShareableEnv),
     Nil,
 }
 
@@ -23,14 +24,20 @@ impl Value {
                 body,
                 closure,
             }),
+            Value::AnonFun(params, body, closure) => Ok(Function {
+                name: "<anon>".to_string(),
+                params,
+                body,
+                closure,
+            }),
             v => error(format!("{} is not a function", v), line),
         }
     }
 }
 
 pub struct Function {
-    pub name: String,
-    pub params: Vec<Token>,
+    name: String,
+    params: Vec<Token>,
     body: Vec<Stmt>,
     closure: ShareableEnv,
 }
@@ -73,7 +80,9 @@ impl Value {
     fn is_truthy(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
-            Value::Number(_) | Value::Str(_) | Value::Fun(_, _, _, _) => true,
+            Value::Number(_) | Value::Str(_) | Value::Fun(_, _, _, _) | Value::AnonFun(_, _, _) => {
+                true
+            }
             Value::Nil => false,
         }
     }
@@ -91,6 +100,7 @@ impl Display for Value {
             Value::Bool(b) => b.fmt(f),
             Value::Nil => write!(f, "nil"),
             Value::Fun(name, _, _, _) => write!(f, "<fn {}>", name),
+            Value::AnonFun(_, _, _) => write!(f, "<anon fn>"),
         }
     }
 }
@@ -316,19 +326,26 @@ impl<Out: Write> Interpreter<Out> {
             }
             Expr::Var(name) => interpret_var(env, name),
             Expr::Assign(lhs, rhs) => self.interpret_assign(lhs, rhs, env),
-            Expr::Call(callee, t, args) => self.interpret_call(callee, env, t.line(), args),
-            Expr::AnonFunDecl(params, body) => {
-                todo!("anon fun")
-            }
+            Expr::Call(callee, t, args) => self.interpret_call(callee, t.line(), args, env),
+            Expr::AnonFunDecl(params, body) => self.interpret_anon_fun_decl(params, body, env),
         }
+    }
+
+    fn interpret_anon_fun_decl(
+        &mut self,
+        params: &[Token],
+        body: &[Stmt],
+        env: ShareableEnv,
+    ) -> Result<Value, RuntimeError> {
+        Ok(Value::AnonFun(params.to_vec(), body.to_vec(), env))
     }
 
     fn interpret_call(
         &mut self,
         callee: &Expr,
-        env: ShareableEnv,
         line: Line,
         args: &[Expr],
+        env: ShareableEnv,
     ) -> Result<Value, RuntimeError> {
         let function: Function = self
             .interpret_expr(callee, env.clone())?
@@ -884,15 +901,23 @@ mod tests {
     fn test_anon_functions() {
         let mut out = Vec::new();
         let script = r#"
-        fun thrice(fn) {
-            for (var i = 1; i <= 3; i = i + 1) {
-              fn(i);
-            }
-          }
+        var fn = fun (a, b) { return a + b; };
+        print fn(1, 2);
+        "#;
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "3".into());
 
-          thrice(fun (a) {
-            print a;
-          });
+        let mut out = Vec::new();
+        let script = r#"
+        fun thrice(fn) {
+          for (var i = 1; i <= 3; i = i + 1) {
+            fn(i);
+          }
+        }
+
+        thrice(fun (a) {
+          print a;
+        });
         "#;
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "1\n2\n3".into());

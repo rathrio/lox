@@ -111,14 +111,14 @@ pub fn sexp_stmt(s: &Stmt) -> String {
     }
 }
 
-fn sexp_fun_body(body: &Vec<Stmt>) -> String {
+fn sexp_fun_body(body: &[Stmt]) -> String {
     body.iter()
         .map(sexp_stmt)
         .collect::<Vec<String>>()
         .join(" ")
 }
 
-fn sexp_fun_params(params: &Vec<Token>) -> String {
+fn sexp_fun_params(params: &[Token]) -> String {
     params
         .iter()
         .map(|t| format!("{}", t))
