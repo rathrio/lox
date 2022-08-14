@@ -922,4 +922,23 @@ mod tests {
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "1\n2\n3".into());
     }
+
+    #[test]
+    fn test_closure_binding() {
+        let mut out = Vec::new();
+        let script = r#"
+        var a = "global";
+        {
+            fun showA() {
+                print a;
+            }
+
+            showA();
+            var a = "block";
+            showA();
+        }
+        "#;
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "\"global\"\n\"global\"".into());
+    }
 }
