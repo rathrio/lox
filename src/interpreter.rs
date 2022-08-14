@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Display, io::Write, ops::ControlFlow, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt::Display, io::Write, rc::Rc};
 
 use crate::{
     ast::{Expr, Program, Stmt},
@@ -44,8 +44,10 @@ impl Function {
             local_env.define(param.to_string(), v);
         }
 
-        interpreter.interpret_stmts(&self.body, Rc::new(RefCell::new(local_env)))?;
-        Ok(Value::Nil)
+        match interpreter.interpret_stmts(&self.body, Rc::new(RefCell::new(local_env)))? {
+            Flow::Return(v) => Ok(v),
+            _ => Ok(Value::Nil),
+        }
     }
 
     fn arity(&self) -> usize {
@@ -150,7 +152,11 @@ impl Env {
     }
 }
 
-type Flow = ControlFlow<(), ()>;
+pub enum Flow {
+    Continue,
+    Break,
+    Return(Value),
+}
 
 #[derive(Debug)]
 pub struct Interpreter<Out: Write> {
@@ -170,27 +176,29 @@ impl<Out: Write> Interpreter<Out> {
 
     fn interpret_stmts(&mut self, stmts: &[Stmt], env: ShareableEnv) -> Result<Flow, RuntimeError> {
         for stmt in stmts {
-            if let Flow::Break(_) = self.interpret_stmt(stmt, env.clone())? {
-                return Ok(Flow::Break(()));
+            match self.interpret_stmt(stmt, env.clone())? {
+                Flow::Break => return Ok(Flow::Break),
+                Flow::Return(v) => return Ok(Flow::Return(v)),
+                _ => (),
             }
         }
 
-        Ok(Flow::Continue(()))
+        Ok(Flow::Continue)
     }
 
     fn interpret_stmt(&mut self, stmt: &Stmt, env: ShareableEnv) -> Result<Flow, RuntimeError> {
         match stmt {
             Stmt::Expr(expr) => {
                 self.interpret_expr(expr, env)?;
-                Ok(Flow::Continue(()))
+                Ok(Flow::Continue)
             }
             Stmt::Print(expr) => {
                 self.interpret_print(expr, env)?;
-                Ok(Flow::Continue(()))
+                Ok(Flow::Continue)
             }
             Stmt::VarDecl(name, expr) => {
                 self.interpret_var_decl(name, expr, env)?;
-                Ok(Flow::Continue(()))
+                Ok(Flow::Continue)
             }
             Stmt::Block(stmts) => self.interpret_block(stmts, env),
             Stmt::If(condition, then_branch, else_branch) => {
@@ -200,28 +208,31 @@ impl<Out: Write> Interpreter<Out> {
                 } else if let Some(b) = else_branch {
                     self.interpret_stmt(b, env)
                 } else {
-                    Ok(Flow::Continue(()))
+                    Ok(Flow::Continue)
                 }
             }
             Stmt::While(condition, stmt) => {
                 while self.interpret_expr(condition, env.clone())?.is_truthy() {
-                    if let ControlFlow::Break(_) = self.interpret_stmt(stmt, env.clone())? {
+                    if let Flow::Break = self.interpret_stmt(stmt, env.clone())? {
                         break;
                     }
                 }
 
-                Ok(Flow::Continue(()))
+                Ok(Flow::Continue)
             }
-            Stmt::Break => Ok(Flow::Break(())),
+            Stmt::Break => Ok(Flow::Break),
             Stmt::FunDecl(name, params, stmts) => {
                 let name = name.to_string();
                 env.borrow_mut().define(
                     name.clone(),
                     Value::Fun(name, params.to_vec(), stmts.clone()),
                 );
-                Ok(Flow::Continue(()))
+                Ok(Flow::Continue)
             }
-            Stmt::Return(_, _expr) => todo!(),
+            Stmt::Return(_, expr) => {
+                let v = self.interpret_expr(expr, env)?;
+                Ok(Flow::Return(v))
+            }
         }
     }
 
@@ -757,5 +768,21 @@ mod tests {
         "#;
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "1\n2\n3".into());
+    }
+
+    #[test]
+    fn test_return() {
+        let mut out = Vec::new();
+        let script = r#"
+        fun add(a, b) {
+            return a + b;
+            // Unreachable
+            return 42;
+        }
+        var c = add(3, 4);
+        print c;
+        "#;
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "7".into());
     }
 }
