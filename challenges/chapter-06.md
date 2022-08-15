@@ -11,11 +11,15 @@
    associativity as in C. Write the grammar, and then implement the necessary
    parsing code.
 
+   **Answer:**
+
    See `lox::parser::tests::test_comma_expr`.
 
 2. Likewise, add support for the C-style conditional or “ternary” operator ?:.
    What precedence level is allowed between the ? and :? Is the whole operator
    left-associative or right-associative?
+
+   **Answer:**
 
    See `lox::parser::tests::test_ternary_expr`.
 
@@ -23,5 +27,7 @@
    left-hand operand. In other words, detect a binary operator appearing at the
    beginning of an expression. Report that as an error, but also parse and discard
    a right-hand operand with the appropriate precedence.
+
+   **Answer:**
 
    See `lox::parser::tests::test_binary_lhs_missin_error`.

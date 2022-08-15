@@ -35,6 +35,8 @@
    analogous code in other languages you are familiar with do? What do you think
    users will expect this to do?
 
+   **Answer:**
+
    I expected 3 and it indeed prints 3. Some language may evaluate the LHS of an
    assignment expression first (with `nil`). In that case this would throw a
    runtime error.

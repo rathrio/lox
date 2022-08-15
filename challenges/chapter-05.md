@@ -12,6 +12,8 @@
    Produce a grammar that matches the same language but does not use any of that
    notational sugar.
 
+   **Answer:**
+
    ```
    expr -> expr invoke
    expr -> identifier
@@ -40,6 +42,8 @@
    (SML or Haskell would be ideal for this exercise, but Scheme or another Lisp
    works as well.)
 
+   **Answer:**
+
    Already using Rust with an ML-like type system.
 
 3. In reverse Polish notation (RPN), the operands to an arithmetic operator are
@@ -60,5 +64,7 @@
 
    Define a visitor class for our syntax tree classes that takes an expression,
    converts it to RPN, and returns the resulting string.
+
+   **Answer:**
 
    See `lox::ast::rpn(e: &Expr)`.

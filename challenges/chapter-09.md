@@ -5,11 +5,15 @@
    language. Show how conditional execution can be implemented in terms of those.
    Name a language that uses this technique for its control flow.
 
+   **Answer:**
+
    Smalltalk, e.g. `someValue ifTrue: [ ... ] ifFalse: [ ... ]`
 
 2. Likewise, looping can be implemented using those same tools, provided our
    interpreter supports an important optimization. What is it, and why is it
    necessary? Name a language that uses this technique for iteration.
+
+   **Answer:**
 
    Recursion. You'd want tail call optimization to avoid stack overflows.
    Haskell and Clojure are two that come to mind.
@@ -22,6 +26,8 @@
    runtime, a break statement causes execution to jump to the end of the nearest
    enclosing loop and proceeds from there. Note that the break may be nested inside
    other blocks and if statements that also need to be exited.
+
+   **Answer:**
 
    Ok, I'm really proud of this one. In the parser I use a flag that is
    propagated down in order to denote whether the current context is breakable
