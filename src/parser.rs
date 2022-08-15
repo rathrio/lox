@@ -50,7 +50,37 @@ fn try_into_args(expr: Expr) -> Result<Vec<Expr>, ParserError> {
     }
 }
 
-type Scope = HashMap<String, bool>;
+#[derive(Debug)]
+enum ScopeKind {
+    Function,
+    Block,
+    Global,
+}
+
+#[derive(Debug)]
+struct Scope {
+    kind: ScopeKind,
+    defs: HashMap<String, bool>,
+}
+
+impl Scope {
+    fn new(kind: ScopeKind) -> Self {
+        let defs = HashMap::new();
+        Self { kind, defs }
+    }
+
+    fn is_declared(&self, id: &str) -> bool {
+        self.defs.contains_key(id)
+    }
+
+    fn declare(&mut self, id: String) {
+        self.defs.insert(id, false);
+    }
+
+    fn define(&mut self, id: String) {
+        self.defs.insert(id, true);
+    }
+}
 
 #[derive(Debug)]
 pub struct Parser {
@@ -62,7 +92,7 @@ impl Parser {
     pub fn new(input: &str) -> Self {
         let mut s = Lexer::new(input.to_string());
         let tokens = s.lex_tokens();
-        let scopes = vec![Scope::new()];
+        let scopes = vec![Scope::new(ScopeKind::Global)];
         Self { tokens, scopes }
     }
 
@@ -97,7 +127,7 @@ impl Parser {
         self.next();
 
         let id = self.next();
-        self.declare(&id);
+        self.declare(&id)?;
 
         if let Token::Semicolon(_) = self.peek() {
             self.next();
@@ -142,7 +172,7 @@ impl Parser {
 
     fn parse_fun_body(&mut self, defs: &[Token]) -> Result<Vec<Stmt>, ParserError> {
         let body = match self.peek() {
-            Token::LeftBrace(_) => self.parse_block(false, defs)?,
+            Token::LeftBrace(_) => self.parse_block(false, defs, ScopeKind::Function)?,
             t => return error("expected { before function body", t.line()),
         };
         let stmts = match body {
@@ -194,15 +224,19 @@ impl Parser {
                 }
             }
             Token::Print(_) => self.parse_print_stmt(),
-            Token::LeftBrace(_) => self.parse_block(is_break_allowed, &[]),
+            Token::LeftBrace(_) => self.parse_block(is_break_allowed, &[], ScopeKind::Block),
             Token::Return(_) => self.parse_return(),
             _ => self.parse_expr_stmt(),
         }
     }
 
     fn parse_return(&mut self) -> Result<Stmt, ParserError> {
-        // conume return
         let ret = self.next();
+
+        if !matches!(self.current_scope().kind, ScopeKind::Function) {
+            return error("cannot return from top level code", ret.line());
+        }
+
         let expr = match self.peek() {
             Token::Semicolon(_) => Expr::Nil,
             _ => self.parse_expr(0)?,
@@ -292,10 +326,15 @@ impl Parser {
         Ok(Stmt::Print(expr))
     }
 
-    fn parse_block(&mut self, is_break_allowed: bool, defs: &[Token]) -> Result<Stmt, ParserError> {
+    fn parse_block(
+        &mut self,
+        is_break_allowed: bool,
+        defs: &[Token],
+        kind: ScopeKind,
+    ) -> Result<Stmt, ParserError> {
         // consume {
         self.next();
-        self.enter_scope();
+        self.enter_scope(kind);
 
         for def in defs {
             self.declare_and_define(def)?;
@@ -478,21 +517,26 @@ impl Parser {
         }
     }
 
-    fn enter_scope(&mut self) {
-        self.scopes.push(Scope::new());
+    fn enter_scope(&mut self, kind: ScopeKind) {
+        self.scopes.push(Scope::new(kind));
     }
 
     fn exit_scope(&mut self) {
         self.scopes.pop().expect("attempted to pop global scope");
     }
 
-    fn declare(&mut self, id: &Token) {
-        self.current_scope().insert(id.to_string(), false);
+    fn declare(&mut self, id: &Token) -> Result<(), ParserError> {
+        if self.current_scope().is_declared(id.to_string().as_str()) {
+            error(format!("variable \"{}\" already in scope", id), id.line())
+        } else {
+            self.current_scope().declare(id.to_string());
+            Ok(())
+        }
     }
 
     fn define(&mut self, id: &Token) -> Result<(), ParserError> {
-        if self.current_scope().contains_key(id.to_string().as_str()) {
-            self.current_scope().insert(id.to_string(), true);
+        if self.current_scope().is_declared(id.to_string().as_str()) {
+            self.current_scope().define(id.to_string());
             Ok(())
         } else {
             error(
@@ -503,7 +547,7 @@ impl Parser {
     }
 
     fn declare_and_define(&mut self, id: &Token) -> Result<(), ParserError> {
-        self.declare(id);
+        self.declare(id)?;
         self.define(id)
     }
 
@@ -514,7 +558,7 @@ impl Parser {
 
     fn resolve_depth(&self, id: &Token) -> Result<u8, ParserError> {
         for (depth, scope) in self.scopes.iter().rev().enumerate() {
-            if scope.contains_key(id.to_string().as_str()) {
+            if scope.defs.contains_key(id.to_string().as_str()) {
                 return Ok(depth as u8);
             }
         }
@@ -815,6 +859,27 @@ mod tests {
         }
         print b;
         "#;
+        assert!(parse(script).is_err());
+    }
+
+    #[test]
+    fn test_naming_collision() {
+        let script = r#"
+        fun bad() {
+            var a = "first";
+            var a = "second";
+        }
+        "#;
+
+        assert!(parse(script).is_err());
+    }
+
+    #[test]
+    fn test_return_outside_function() {
+        let script = "return 42;";
+        assert!(parse(script).is_err());
+
+        let script = "{ return 42; }";
         assert!(parse(script).is_err());
     }
 }

@@ -530,25 +530,7 @@ impl<Out: Write> Interpreter<Out> {
         env.borrow()
             .get_at_depth(name.to_string(), depth)
             .map_err(|msg| RuntimeError::new(msg, name.line()))
-        // if depth == 0 {
-        //     self.get_value(name, env)
-        // } else {
-        //     let mut e = None;
-        //     for _ in 0..(depth + 1) {
-        //         e = env.borrow().enclosing.clone();
-        //         dbg!(&e.unwrap().borrow().values);
-        //     }
-
-        //     todo!()
-        //     // self.get_value(name, e.expect("depth resolution bug in parser"))
-        // }
     }
-
-    // fn get_value(&self, name: &Token, env: ShareableEnv) -> Result<Value, RuntimeError> {
-    //     env.borrow()
-    //         .get(name.to_string())
-    //         .map_err(|msg| RuntimeError::new(msg, name.line()))
-    // }
 
     fn interpret_fun_decl(
         &self,
@@ -582,7 +564,6 @@ mod tests {
 
     fn interpret(input: &str, out: &mut impl Write) -> Result<ControlFlow, RuntimeError> {
         let program = Parser::parse_str(input).expect("syntax error");
-        dbg!(&program);
         let mut interpreter = Interpreter::new(out);
         interpreter.interpret(&program)
     }
@@ -732,15 +713,12 @@ mod tests {
     #[test]
     fn test_variable_decls() {
         let mut out = Vec::new();
+        interpret("var a = 1; print a;", &mut out).unwrap();
+        assert_outputted(out, "1".into());
+
+        let mut out = Vec::new();
         interpret("var a = 1; var b = 2; print a + b;", &mut out).unwrap();
         assert_outputted(out, "3".into());
-    }
-
-    #[test]
-    fn test_variable_decls_2() {
-        let mut out = Vec::new();
-        interpret("var a = 40; var a = a + 2; print a;", &mut out).unwrap();
-        assert_outputted(out, "42".into());
     }
 
     #[test]

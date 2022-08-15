@@ -1,5 +1,10 @@
 # Lox
 
+Todos
+-----
+
+- [ ] Fix REPL
+
 Resources
 ---------
 
