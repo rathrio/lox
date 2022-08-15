@@ -28,7 +28,7 @@ pub enum Expr {
     Unary(Token, Box<Expr>),
     Binary(Box<Expr>, Token, Box<Expr>),
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
-    Var(Token),
+    Var(Token, u8),
     Assign(Token, Box<Expr>),
     Call(Box<Expr>, Token, Vec<Expr>),
     AnonFunDecl(Vec<Token>, Vec<Stmt>),
@@ -55,7 +55,7 @@ pub fn sexp_expr(e: &Expr) -> String {
             sexp_expr(conclusion),
             sexp_expr(alternate)
         ),
-        Expr::Var(name) => format!("{}", name),
+        Expr::Var(name, _) => format!("{}", name),
         Expr::Assign(lhs, rhs) => format!("(= {} {})", lhs, sexp_expr(rhs)),
         Expr::Call(callee, _, args) => format!(
             "(call {} ({}))",
@@ -144,7 +144,7 @@ fn rpn(e: &Expr) -> String {
         Expr::Grouping(e) => rpn(e),
         Expr::Unary(op, e) => format!("{} {}", rpn(e), op),
         Expr::Binary(lhs, op, rhs) => format!("{} {} {}", rpn(lhs), rpn(rhs), op),
-        Expr::Var(name) => format!("{}", name),
+        Expr::Var(name, _) => format!("{}", name),
         Expr::Ternary(condition, conclusion, alternate) => format!(
             "{} ? {} : {}",
             rpn(condition),

@@ -144,11 +144,21 @@ impl Env {
         self.values.insert(name, value);
     }
 
+    pub fn get_at_depth(&self, name: String, depth: u8) -> Result<Value, String> {
+        if depth == 0 {
+            self.get(name)
+        } else if let Some(e) = &self.enclosing {
+            e.borrow().get_at_depth(name, depth - 1)
+        } else {
+            Err(format!("variable lookup failed for {}", &name))
+        }
+    }
+
     pub fn get(&self, name: String) -> Result<Value, String> {
         if let Some(v) = self.values.get(&name) {
             Ok(v.clone())
         } else if let Some(e) = &self.enclosing {
-            e.borrow_mut().get(name)
+            e.borrow().get(name)
         } else {
             Err(format!("undefined variable \"{}\"", &name))
         }
@@ -226,9 +236,9 @@ impl<Out: Write> Interpreter<Out> {
             Stmt::If(condition, then_branch, else_branch) => {
                 self.interpret_if(condition, env, then_branch, else_branch)
             }
-            Stmt::While(condition, stmt) => self.interpret_while(condition, env, stmt),
+            Stmt::While(condition, stmt) => self.interpret_while(condition, stmt, env),
             Stmt::Break => Ok(ControlFlow::Break),
-            Stmt::FunDecl(name, params, stmts) => interpret_fun_decl(name, env, params, stmts),
+            Stmt::FunDecl(name, params, stmts) => self.interpret_fun_decl(name, params, stmts, env),
             Stmt::Return(_, expr) => self.interpret_return(expr, env),
         }
     }
@@ -244,8 +254,8 @@ impl<Out: Write> Interpreter<Out> {
     fn interpret_while(
         &mut self,
         condition: &Expr,
-        env: ShareableEnv,
         stmt: &Stmt,
+        env: ShareableEnv,
     ) -> Result<ControlFlow, RuntimeError> {
         while self.interpret_expr(condition, env.clone())?.is_truthy() {
             if let ControlFlow::Break = self.interpret_stmt(stmt, env.clone())? {
@@ -324,7 +334,7 @@ impl<Out: Write> Interpreter<Out> {
             Expr::Ternary(condition, conclusion, alternate) => {
                 self.interpret_ternary_expr(condition, conclusion, alternate, env)
             }
-            Expr::Var(name) => interpret_var(env, name),
+            Expr::Var(name, depth) => self.interpret_var(name, *depth, env),
             Expr::Assign(lhs, rhs) => self.interpret_assign(lhs, rhs, env),
             Expr::Call(callee, t, args) => self.interpret_call(callee, t.line(), args, env),
             Expr::AnonFunDecl(params, body) => self.interpret_anon_fun_decl(params, body, env),
@@ -510,26 +520,50 @@ impl<Out: Write> Interpreter<Out> {
             self.interpret_expr(alternate_expr, env)
         }
     }
-}
 
-fn interpret_var(env: ShareableEnv, name: &Token) -> Result<Value, RuntimeError> {
-    env.borrow()
-        .get(format!("{}", name))
-        .map_err(|msg| RuntimeError::new(msg, name.line()))
-}
+    fn interpret_var(
+        &self,
+        name: &Token,
+        depth: u8,
+        env: ShareableEnv,
+    ) -> Result<Value, RuntimeError> {
+        env.borrow()
+            .get_at_depth(name.to_string(), depth)
+            .map_err(|msg| RuntimeError::new(msg, name.line()))
+        // if depth == 0 {
+        //     self.get_value(name, env)
+        // } else {
+        //     let mut e = None;
+        //     for _ in 0..(depth + 1) {
+        //         e = env.borrow().enclosing.clone();
+        //         dbg!(&e.unwrap().borrow().values);
+        //     }
 
-fn interpret_fun_decl(
-    name: &Token,
-    env: ShareableEnv,
-    params: &[Token],
-    stmts: &[Stmt],
-) -> Result<ControlFlow, RuntimeError> {
-    let name = name.to_string();
-    env.borrow_mut().define(
-        name.clone(),
-        Value::Fun(name, params.to_vec(), stmts.to_vec(), env.clone()),
-    );
-    Ok(ControlFlow::Continue)
+        //     todo!()
+        //     // self.get_value(name, e.expect("depth resolution bug in parser"))
+        // }
+    }
+
+    // fn get_value(&self, name: &Token, env: ShareableEnv) -> Result<Value, RuntimeError> {
+    //     env.borrow()
+    //         .get(name.to_string())
+    //         .map_err(|msg| RuntimeError::new(msg, name.line()))
+    // }
+
+    fn interpret_fun_decl(
+        &self,
+        name: &Token,
+        params: &[Token],
+        stmts: &[Stmt],
+        env: ShareableEnv,
+    ) -> Result<ControlFlow, RuntimeError> {
+        let name = name.to_string();
+        env.borrow_mut().define(
+            name.clone(),
+            Value::Fun(name, params.to_vec(), stmts.to_vec(), env.clone()),
+        );
+        Ok(ControlFlow::Continue)
+    }
 }
 
 #[cfg(test)]
@@ -548,6 +582,7 @@ mod tests {
 
     fn interpret(input: &str, out: &mut impl Write) -> Result<ControlFlow, RuntimeError> {
         let program = Parser::parse_str(input).expect("syntax error");
+        dbg!(&program);
         let mut interpreter = Interpreter::new(out);
         interpreter.interpret(&program)
     }
@@ -732,19 +767,6 @@ mod tests {
 
     #[test]
     fn test_block_scope_2() {
-        let mut out = Vec::new();
-        let script = r#"
-        var a = "outer";
-        {
-            var b = "inner";
-        }
-        print b;
-        "#;
-        assert!(interpret(script, &mut out).is_err());
-    }
-
-    #[test]
-    fn test_block_scope_3() {
         let mut out = Vec::new();
         let script = r#"
         var a = "outer";
@@ -938,6 +960,7 @@ mod tests {
             showA();
         }
         "#;
+
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "\"global\"\n\"global\"".into());
     }
