@@ -115,10 +115,45 @@ impl Parser {
 
     fn parse_decl(&mut self, is_break_allowed: bool) -> Result<Stmt, ParserError> {
         match self.peek() {
+            Token::Class(_) => self.parse_class_decl(),
             Token::Var(_) => self.parse_var_decl(),
             Token::Fun(_) => self.parse_fun_decl(),
             _ => self.parse_stmt(is_break_allowed),
         }
+    }
+
+    fn parse_class_decl(&mut self) -> Result<Stmt, ParserError> {
+        // consume class token
+        self.next();
+
+        let class_name = self.parse_identifier()?;
+        self.declare_and_define(&class_name)?;
+
+        self.expect_left_brace("before class body")?;
+
+        let mut methods = Vec::new();
+        loop {
+            match self.peek() {
+                Token::RightBrace(_) => break,
+                Token::Identifier(_, _) => {
+                    let fun = self.parse_fun()?;
+                    methods.push(fun);
+                }
+                t => {
+                    return error(
+                        format!(
+                            "expected a method name starting a method declaration, but got \"{}\"",
+                            t
+                        ),
+                        t.line(),
+                    )
+                }
+            }
+        }
+
+        self.expect_right_brace("after class body")?;
+
+        Ok(Stmt::Class(class_name, methods))
     }
 
     fn parse_var_decl(&mut self) -> Result<Stmt, ParserError> {
@@ -508,6 +543,26 @@ impl Parser {
         }
     }
 
+    fn expect_left_brace(&mut self, pos_msg: &str) -> Result<(), ParserError> {
+        match self.next() {
+            Token::LeftBrace(_) => Ok(()),
+            t => error(
+                format!("expected \"{{\" {}, but got \"{}\" instead", pos_msg, t),
+                t.line(),
+            )?,
+        }
+    }
+
+    fn expect_right_brace(&mut self, pos_msg: &str) -> Result<(), ParserError> {
+        match self.next() {
+            Token::RightBrace(_) => Ok(()),
+            t => error(
+                format!("expected \"}}\" {}, but got \"{}\" instead", pos_msg, t),
+                t.line(),
+            )?,
+        }
+    }
+
     fn expect_semi(&mut self, pos_msg: &str) -> Result<(), ParserError> {
         match self.next() {
             Token::Semicolon(_) => Ok(()),
@@ -870,5 +925,27 @@ mod tests {
 
         let script = "{ return 42; }";
         assert!(parse(script).is_err());
+    }
+
+    #[test]
+    fn test_classes() {
+        assert_eq!("(class Dog ())", sexp("class Dog {}"));
+
+        let script = r#"
+        class Breakfast {
+            cook() {
+              print "Eggs a-fryin'!";
+            }
+
+            serve(who) {
+              print "Enjoy your breakfast, " + who + ".";
+            }
+        }
+        "#;
+
+        assert_eq!(
+            r#"(class Breakfast ((fun cook () ((print "Eggs a-fryin'!"))) (fun serve (who) ((print (+ (+ "Enjoy your breakfast, " who) "."))))))"#,
+            sexp(script)
+        );
     }
 }

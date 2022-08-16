@@ -12,6 +12,7 @@ pub enum Value {
     Bool(bool),
     Fun(String, Vec<Token>, Vec<Stmt>, ShareableEnv),
     AnonFun(Vec<Token>, Vec<Stmt>, ShareableEnv),
+    Class(String, Vec<Stmt>),
     Nil,
 }
 
@@ -80,10 +81,8 @@ impl Value {
     fn is_truthy(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
-            Value::Number(_) | Value::Str(_) | Value::Fun(_, _, _, _) | Value::AnonFun(_, _, _) => {
-                true
-            }
             Value::Nil => false,
+            _ => true,
         }
     }
 
@@ -101,6 +100,7 @@ impl Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Fun(name, _, _, _) => write!(f, "<fn {}>", name),
             Value::AnonFun(_, _, _) => write!(f, "<anon fn>"),
+            Value::Class(name, _) => write!(f, "{}", name),
         }
     }
 }
@@ -240,6 +240,7 @@ impl<Out: Write> Interpreter<Out> {
             Stmt::Break => Ok(ControlFlow::Break),
             Stmt::FunDecl(name, params, stmts) => self.interpret_fun_decl(name, params, stmts, env),
             Stmt::Return(_, expr) => self.interpret_return(expr, env),
+            Stmt::Class(name, methods) => self.interpret_class_decl(name, methods, env),
         }
     }
 
@@ -548,6 +549,26 @@ impl<Out: Write> Interpreter<Out> {
             name.clone(),
             Value::Fun(name, params.to_vec(), stmts.to_vec(), env.clone()),
         );
+        Ok(ControlFlow::Continue)
+    }
+
+    fn interpret_class_decl(
+        &self,
+        name: &Token,
+        methods: &[Stmt],
+        env: ShareableEnv,
+    ) -> Result<ControlFlow, RuntimeError> {
+        let class_name = name.to_string();
+        env.borrow_mut().define(class_name.clone(), Value::Nil);
+        let class = Value::Class(class_name.clone(), methods.to_vec());
+        env.borrow_mut()
+            .assign(class_name.clone(), class)
+            .map_err(|_| {
+                RuntimeError::new(
+                    format!("class {} is already defined", class_name),
+                    name.line(),
+                )
+            })?;
         Ok(ControlFlow::Continue)
     }
 }
@@ -973,5 +994,21 @@ mod tests {
             .unwrap();
 
         assert_outputted(out, "3.1415".into());
+    }
+
+    #[test]
+    fn test_class() {
+        let mut out = Vec::new();
+        let script = r#"
+        class DevonshireCream {
+           serveOn() {
+                return "Scones";
+           }
+        }
+        print DevonshireCream;
+        "#;
+
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "DevonshireCream".into());
     }
 }

@@ -15,6 +15,7 @@ pub enum Stmt {
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
     Return(Token, Expr),
+    Class(Token, Vec<Stmt>),
     Break,
 }
 
@@ -108,6 +109,11 @@ pub fn sexp_stmt(s: &Stmt) -> String {
             )
         }
         Stmt::Return(_, expr) => format!("(return {})", sexp_expr(expr)),
+        Stmt::Class(name, methods) => format!(
+            "(class {} ({}))",
+            name,
+            methods.iter().map(sexp_stmt).collect::<Vec<_>>().join(" ")
+        ),
     }
 }
 
