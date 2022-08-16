@@ -524,12 +524,16 @@ impl<Out: Write> Interpreter<Out> {
     fn interpret_var(
         &self,
         name: &Token,
-        depth: u8,
+        depth: Option<u8>,
         env: ShareableEnv,
     ) -> Result<Value, RuntimeError> {
-        env.borrow()
-            .get_at_depth(name.to_string(), depth)
-            .map_err(|msg| RuntimeError::new(msg, name.line()))
+        let resolved_var = if let Some(d) = depth {
+            env.borrow().get_at_depth(name.to_string(), d)
+        } else {
+            self.env.borrow().get(name.to_string())
+        };
+
+        resolved_var.map_err(|msg| RuntimeError::new(msg, name.line()))
     }
 
     fn interpret_fun_decl(
@@ -760,6 +764,19 @@ mod tests {
     }
 
     #[test]
+    fn test_block_scope_3() {
+        let mut out = Vec::new();
+        let script = r#"
+        var a = "outer";
+        {
+            var b = "inner";
+        }
+        print b;
+        "#;
+        assert!(interpret(script, &mut out).is_err());
+    }
+
+    #[test]
     fn test_block_scope_4() {
         let mut out = Vec::new();
         let script = r#"
@@ -941,5 +958,20 @@ mod tests {
 
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "\"global\"\n\"global\"".into());
+    }
+
+    #[test]
+    fn test_global_bindings_can_by_resolved_without_old_ast() {
+        let mut out = Vec::new();
+        let mut interpreter = Interpreter::new(&mut out);
+        interpreter
+            .interpret(&Parser::parse_str("var a = 3.1415;").unwrap())
+            .unwrap();
+
+        interpreter
+            .interpret(&Parser::parse_str("print a;").unwrap())
+            .unwrap();
+
+        assert_outputted(out, "3.1415".into());
     }
 }

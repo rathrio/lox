@@ -28,7 +28,7 @@ pub enum Expr {
     Unary(Token, Box<Expr>),
     Binary(Box<Expr>, Token, Box<Expr>),
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
-    Var(Token, u8),
+    Var(Token, Option<u8>),
     Assign(Token, Box<Expr>),
     Call(Box<Expr>, Token, Vec<Expr>),
     AnonFunDecl(Vec<Token>, Vec<Stmt>),

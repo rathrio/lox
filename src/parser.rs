@@ -54,7 +54,6 @@ fn try_into_args(expr: Expr) -> Result<Vec<Expr>, ParserError> {
 enum ScopeKind {
     Function,
     Block,
-    Global,
 }
 
 #[derive(Debug)]
@@ -92,7 +91,7 @@ impl Parser {
     pub fn new(input: &str) -> Self {
         let mut s = Lexer::new(input.to_string());
         let tokens = s.lex_tokens();
-        let scopes = vec![Scope::new(ScopeKind::Global)];
+        let scopes = vec![];
         Self { tokens, scopes }
     }
 
@@ -233,7 +232,9 @@ impl Parser {
     fn parse_return(&mut self) -> Result<Stmt, ParserError> {
         let ret = self.next();
 
-        if !matches!(self.current_scope().kind, ScopeKind::Function) {
+        if self.current_scope().is_none()
+            || !matches!(self.current_scope().unwrap().kind, ScopeKind::Function)
+        {
             return error("cannot return from top level code", ret.line());
         }
 
@@ -391,7 +392,7 @@ impl Parser {
             Token::Nil(_) => Ok(Expr::Nil),
             Token::Identifier(line, name) => {
                 let id = Token::Identifier(line, name);
-                Ok(Expr::Var(id.clone(), self.resolve_depth(&id)?))
+                Ok(Expr::Var(id.clone(), self.resolve_depth(&id)))
             }
             Token::Fun(line) => self.parse_anon_fn(line),
             Token::LeftParen(_) => {
@@ -526,17 +527,33 @@ impl Parser {
     }
 
     fn declare(&mut self, id: &Token) -> Result<(), ParserError> {
-        if self.current_scope().is_declared(id.to_string().as_str()) {
+        if self.scopes.is_empty() {
+            return Ok(());
+        }
+
+        if self
+            .current_scope()
+            .unwrap()
+            .is_declared(id.to_string().as_str())
+        {
             error(format!("variable \"{}\" already in scope", id), id.line())
         } else {
-            self.current_scope().declare(id.to_string());
+            self.current_scope().unwrap().declare(id.to_string());
             Ok(())
         }
     }
 
     fn define(&mut self, id: &Token) -> Result<(), ParserError> {
-        if self.current_scope().is_declared(id.to_string().as_str()) {
-            self.current_scope().define(id.to_string());
+        if self.scopes.is_empty() {
+            return Ok(());
+        }
+
+        if self
+            .current_scope()
+            .unwrap()
+            .is_declared(id.to_string().as_str())
+        {
+            self.current_scope().unwrap().define(id.to_string());
             Ok(())
         } else {
             error(
@@ -551,19 +568,23 @@ impl Parser {
         self.define(id)
     }
 
-    fn current_scope(&mut self) -> &mut Scope {
+    fn current_scope(&mut self) -> Option<&mut Scope> {
+        if self.scopes.is_empty() {
+            return None;
+        }
+
         let size = self.scopes.len();
-        self.scopes.get_mut(size - 1).unwrap()
+        Some(self.scopes.get_mut(size - 1).unwrap())
     }
 
-    fn resolve_depth(&self, id: &Token) -> Result<u8, ParserError> {
+    fn resolve_depth(&self, id: &Token) -> Option<u8> {
         for (depth, scope) in self.scopes.iter().rev().enumerate() {
             if scope.defs.contains_key(id.to_string().as_str()) {
-                return Ok(depth as u8);
+                return Some(depth as u8);
             }
         }
 
-        error(format!("\"{}\" is undefined", id), id.line())
+        None
     }
 }
 
@@ -784,12 +805,13 @@ mod tests {
         assert!(parse("if (1) break;").is_err())
     }
 
-    // #[test]
-    // fn test_call() {
-    //     assert_eq!("(call foo ())", sexp_expr("foo()"));
-    //     assert_eq!("(call add (1 2))", sexp_expr("add(1, 2)"));
-    //     assert_eq!("(call add (1 2 (! 42)))", sexp_expr("add(1, 2, !42)"));
-    // }
+    #[test]
+    fn test_call() {
+        assert_eq!(
+            "(fun add (a b c) ()) (call add (1 2 (! 42)))",
+            sexp("fun add(a, b, c) {} add(1, 2, !42);")
+        );
+    }
 
     #[test]
     fn test_fun_decl() {
@@ -826,39 +848,6 @@ mod tests {
     #[test]
     fn test_anon_functions_as_expr_stmt() {
         let script = "fun () {};";
-        assert!(parse(script).is_err());
-    }
-
-    #[test]
-    fn test_var_distance_resolution() {
-        let script = r#"
-        var a = 42;
-        {
-            print a;
-        }
-        "#;
-
-        let ast = parse(script).unwrap();
-        if let Stmt::Block(stmts) = ast.stmts.get(1).unwrap() {
-            if let Stmt::Print(Expr::Var(_name, depth)) = stmts.get(0).unwrap() {
-                assert_eq!(1, *depth);
-            } else {
-                panic!("Malfored AST");
-            }
-        } else {
-            panic!("Malfored AST");
-        }
-    }
-
-    #[test]
-    fn test_block_scope() {
-        let script = r#"
-        var a = "outer";
-        {
-            var b = "inner";
-        }
-        print b;
-        "#;
         assert!(parse(script).is_err());
     }
 
