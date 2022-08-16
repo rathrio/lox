@@ -22,7 +22,18 @@
    Is it a runtime error? Compile error? Allowed? Do they treat global variables
    differently? Do you agree with their choices? Justify your answer.
 
+   **Answer:**
+
+   Rust allows it. I am personally not bothered by this as this can be useful in
+   very rare cases.
+
 3. Extend the resolver to report an error if a local variable is never used.
+
+   **Answer:**
+
+   Not going to implement this, but this is how I'd do in a first step: Track
+   flag per declaration. As soon as it's used somewhere set it to true. All
+   false flags mean the declaration was unused.
 
 4. Our resolver calculates which environment the variable is found in, but it’s
    still looked up by name in that map. A more efficient environment representation
@@ -35,5 +46,5 @@
 
    **Answer:**
 
-   Out of convenience I used the expr var node to store the depth and that of
-   course breaks the REPL. This approach could help.
+   Out of convenience I used the expr var node to store the depth. Not going to
+   refactor this now...
