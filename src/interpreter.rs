@@ -13,57 +13,61 @@ pub enum Value {
     Fun(String, Vec<Token>, Vec<Stmt>, ShareableEnv),
     AnonFun(Vec<Token>, Vec<Stmt>, ShareableEnv),
     Class(String, Vec<Stmt>),
+    Instance(Box<Value>),
     Nil,
 }
 
 impl Value {
-    fn try_into_fn(self, line: Line) -> Result<Function, RuntimeError> {
+    fn arity(&self, line: Line) -> Result<usize, RuntimeError> {
         match self {
-            Value::Fun(name, params, body, closure) => Ok(Function {
-                name,
-                params,
-                body,
-                closure,
-            }),
-            Value::AnonFun(params, body, closure) => Ok(Function {
-                name: "<anon>".to_string(),
-                params,
-                body,
-                closure,
-            }),
-            v => error(format!("{} is not a function", v), line),
+            Value::Fun(_, params, _, _) => Ok(params.len()),
+            Value::AnonFun(params, _, _) => Ok(params.len()),
+            Value::Class(_, _) => Ok(0),
+            t => error(format!("{} is not a function", t), line),
         }
     }
-}
 
-pub struct Function {
-    name: String,
-    params: Vec<Token>,
-    body: Vec<Stmt>,
-    closure: ShareableEnv,
-}
-
-impl Function {
-    fn call<Out: Write>(
+    fn call_fun<Out: Write>(
         &self,
         i: &mut Interpreter<Out>,
-        mut args: Vec<Value>,
+        params: &[Token],
+        body: &[Stmt],
+        closure: &ShareableEnv,
+        args: &mut Vec<Value>,
     ) -> Result<Value, RuntimeError> {
-        let mut local_env = Env::new(Some(self.closure.clone()));
+        let mut local_env = Env::new(Some(closure.clone()));
 
-        for param in self.params.iter() {
+        for param in params.iter() {
             let v = args.remove(0);
             local_env.define(param.to_string(), v);
         }
 
-        match i.interpret_stmts(&self.body, Rc::new(RefCell::new(local_env)))? {
+        match i.interpret_stmts(body, Rc::new(RefCell::new(local_env)))? {
             ControlFlow::Return(v) => Ok(v),
             _ => Ok(Value::Nil),
         }
     }
 
-    fn arity(&self) -> usize {
-        self.params.len()
+    fn call<Out: Write>(
+        &self,
+        i: &mut Interpreter<Out>,
+        mut args: Vec<Value>,
+        line: Line,
+    ) -> Result<Value, RuntimeError> {
+        match self {
+            Value::Fun(_, params, body, closure) => {
+                self.call_fun(i, params, body, closure, &mut args)
+            }
+            Value::AnonFun(params, body, closure) => {
+                self.call_fun(i, params, body, closure, &mut args)
+            }
+            // TODO: avoid cloning class
+            Value::Class(name, methods) => Ok(Value::Instance(Box::new(Value::Class(
+                name.clone(),
+                methods.clone(),
+            )))),
+            t => error(format!("{} is not a function", t), line),
+        }
     }
 }
 
@@ -101,6 +105,7 @@ impl Display for Value {
             Value::Fun(name, _, _, _) => write!(f, "<fn {}>", name),
             Value::AnonFun(_, _, _) => write!(f, "<anon fn>"),
             Value::Class(name, _) => write!(f, "{}", name),
+            Value::Instance(class) => write!(f, "{} instance", class),
         }
     }
 }
@@ -358,28 +363,26 @@ impl<Out: Write> Interpreter<Out> {
         args: &[Expr],
         env: ShareableEnv,
     ) -> Result<Value, RuntimeError> {
-        let function: Function = self
-            .interpret_expr(callee, env.clone())?
-            .try_into_fn(line)?;
+        let callable = self.interpret_expr(callee, env.clone())?;
 
         let mut arguments = Vec::new();
         for arg_expr in args {
             arguments.push(self.interpret_expr(arg_expr, env.clone())?);
         }
 
-        if arguments.len() != function.arity() {
+        if arguments.len() != callable.arity(line)? {
             return error(
                 format!(
                     "{} expected {} arguments, provided {}",
-                    function.name,
-                    function.arity(),
+                    callable,
+                    callable.arity(line)?,
                     arguments.len()
                 ),
                 line,
             );
         }
 
-        function.call(self, arguments)
+        callable.call(self, arguments, line)
     }
 
     fn interpret_assign(
@@ -1010,5 +1013,18 @@ mod tests {
 
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "DevonshireCream".into());
+    }
+
+    #[test]
+    fn test_constructors() {
+        let mut out = Vec::new();
+        let script = r#"
+        class Bagel {}
+        var bagel = Bagel();
+        print bagel;
+        "#;
+
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "Bagel instance".into());
     }
 }
