@@ -469,17 +469,7 @@ impl Parser {
 
             match op {
                 Token::Query(_) => {
-                    let conclusion = self.parse_expr(0)?;
-                    if let Token::Colon(_) = self.next() {
-                        let alternate = self.parse_expr(r_bp)?;
-                        expr = Expr::Ternary(
-                            Box::new(expr),
-                            Box::new(conclusion),
-                            Box::new(alternate),
-                        );
-                    } else {
-                        return error("missing \":\" in ternary", op.line());
-                    }
+                    expr = self.parse_ternary(expr, r_bp, op.line())?;
                 }
                 Token::LeftParen(line) => {
                     expr = self.parse_call(line, expr, op.clone())?;
@@ -499,6 +489,21 @@ impl Parser {
         }
 
         Ok(expr)
+    }
+
+    fn parse_ternary(&mut self, condition: Expr, r_bp: u8, line: Line) -> Result<Expr> {
+        let conclusion = self.parse_expr(0)?;
+
+        if let Token::Colon(_) = self.next() {
+            let alternate = self.parse_expr(r_bp)?;
+            Ok(Expr::Ternary(
+                Box::new(condition),
+                Box::new(conclusion),
+                Box::new(alternate),
+            ))
+        } else {
+            error("missing \":\" in ternary", line)
+        }
     }
 
     fn parse_call(&mut self, line: usize, expr: Expr, op: Token) -> Result<Expr> {
