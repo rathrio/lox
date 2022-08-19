@@ -26,8 +26,10 @@ fn error<T>(report: impl Into<String>, line: Line) -> Result<T> {
 
 fn try_into_assign(expr: Expr, line: Line) -> Result<Expr> {
     if let Expr::Binary(lhs, Token::Equal(_), rhs) = expr {
-        if let Expr::Var(name, _) = *lhs {
-            return Ok(Expr::Assign(name, rhs));
+        match *lhs {
+            Expr::Var(name, _) => return Ok(Expr::Assign(name, rhs)),
+            Expr::Get(e, name) => return Ok(Expr::Set(e, name, rhs)),
+            _ => (),
         }
     }
 
@@ -968,7 +970,7 @@ mod tests {
     }
 
     #[test]
-    fn test_prop_access() {
+    fn test_get() {
         assert_eq!(
             "(. someObject someProperty)",
             sexp_expr("someObject.someProperty")
@@ -977,6 +979,14 @@ mod tests {
         assert_eq!(
             "(call (. (call (. egg scramble) (3)) with) (cheddar))",
             sexp_expr("egg.scramble(3).with(cheddar)")
+        );
+    }
+
+    #[test]
+    fn test_set() {
+        assert_eq!(
+            "(.= (. (. breakfast omelette) filling) meat ham)",
+            sexp_expr("breakfast.omelette.filling.meat = ham")
         );
     }
 }

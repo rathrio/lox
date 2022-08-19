@@ -33,6 +33,7 @@ pub enum Expr {
     Assign(Token, Box<Expr>),
     Call(Box<Expr>, Token, Vec<Expr>),
     Get(Box<Expr>, Token),
+    Set(Box<Expr>, Token, Box<Expr>),
     AnonFunDecl(Vec<Token>, Vec<Stmt>),
 }
 
@@ -73,6 +74,9 @@ pub fn sexp_expr(e: &Expr) -> String {
             sexp_fun_body(body)
         ),
         Expr::Get(object, name) => format!("(. {} {})", sexp_expr(object), name),
+        Expr::Set(object, name, value) => {
+            format!("(.= {} {} {})", sexp_expr(object), name, sexp_expr(value))
+        }
     }
 }
 
@@ -167,6 +171,7 @@ fn rpn(e: &Expr) -> String {
         ),
         Expr::AnonFunDecl(params, body) => "unsupported".to_string(),
         Expr::Get(object, name) => format!("{} {} .", rpn(object), name),
+        Expr::Set(object, name, value) => format!("{} {} {} .=", rpn(object), name, rpn(value)),
     }
 }
 

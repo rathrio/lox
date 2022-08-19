@@ -345,6 +345,7 @@ impl<Out: Write> Interpreter<Out> {
             Expr::Call(callee, t, args) => self.interpret_call(callee, t.line(), args, env),
             Expr::AnonFunDecl(params, body) => self.interpret_anon_fun_decl(params, body, env),
             Expr::Get(object, name) => todo!(),
+            Expr::Set(object, name, value) => todo!(),
         }
     }
 
@@ -1027,5 +1028,19 @@ mod tests {
 
         interpret(script, &mut out).unwrap();
         assert_outputted(out, "Bagel instance".into());
+    }
+
+    #[test]
+    fn test_properties() {
+        let mut out = Vec::new();
+        let script = r#"
+        class Bagel {}
+        var bagel = Bagel();
+        bagel.cheddar = true;
+        print bagel.cheddar;
+        "#;
+
+        interpret(script, &mut out).unwrap();
+        assert_outputted(out, "true".into());
     }
 }
