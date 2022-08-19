@@ -20,11 +20,11 @@ impl ParserError {
     }
 }
 
-fn error<T>(report: impl Into<String>, line: Line) -> Result<T, ParserError> {
+fn error<T>(report: impl Into<String>, line: Line) -> Result<T> {
     Err(ParserError::new(report, line))
 }
 
-fn try_into_assign(expr: Expr, line: Line) -> Result<Expr, ParserError> {
+fn try_into_assign(expr: Expr, line: Line) -> Result<Expr> {
     if let Expr::Binary(lhs, Token::Equal(_), rhs) = expr {
         if let Expr::Var(name, _) = *lhs {
             return Ok(Expr::Assign(name, rhs));
@@ -35,7 +35,7 @@ fn try_into_assign(expr: Expr, line: Line) -> Result<Expr, ParserError> {
 }
 
 /// Flattens a comma expression tree into an expression list.
-fn try_into_args(expr: Expr) -> Result<Vec<Expr>, ParserError> {
+fn try_into_args(expr: Expr) -> Result<Vec<Expr>> {
     match expr {
         Expr::Binary(lhs, Token::Comma(_), rhs) => {
             if lhs.is_comma() {
@@ -81,6 +81,8 @@ impl Scope {
     }
 }
 
+type Result<T> = core::result::Result<T, ParserError>;
+
 #[derive(Debug)]
 pub struct Parser {
     tokens: Vec<Token>,
@@ -95,15 +97,15 @@ impl Parser {
         Self { tokens, scopes }
     }
 
-    pub fn parse_str(input: &str) -> Result<Program, ParserError> {
+    pub fn parse_str(input: &str) -> Result<Program> {
         Self::new(input).parse_program()
     }
 
-    pub fn parse_expr_str(input: &str) -> Result<Expr, ParserError> {
+    pub fn parse_expr_str(input: &str) -> Result<Expr> {
         Self::new(input).parse_expr(0)
     }
 
-    fn parse_program(&mut self) -> Result<Program, ParserError> {
+    fn parse_program(&mut self) -> Result<Program> {
         let mut stmts = Vec::new();
 
         while !self.peek().is_eof() {
@@ -113,7 +115,7 @@ impl Parser {
         Ok(Program { stmts })
     }
 
-    fn parse_decl(&mut self, is_break_allowed: bool) -> Result<Stmt, ParserError> {
+    fn parse_decl(&mut self, is_break_allowed: bool) -> Result<Stmt> {
         match self.peek() {
             Token::Class(_) => self.parse_class_decl(),
             Token::Var(_) => self.parse_var_decl(),
@@ -122,7 +124,7 @@ impl Parser {
         }
     }
 
-    fn parse_class_decl(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_class_decl(&mut self) -> Result<Stmt> {
         // consume class token
         self.next();
 
@@ -156,7 +158,7 @@ impl Parser {
         Ok(Stmt::Class(class_name, methods))
     }
 
-    fn parse_var_decl(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_var_decl(&mut self) -> Result<Stmt> {
         // consume var token
         self.next();
 
@@ -181,13 +183,13 @@ impl Parser {
         decl
     }
 
-    fn parse_fun_decl(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_fun_decl(&mut self) -> Result<Stmt> {
         // consume fun token
         self.next();
         self.parse_fun()
     }
 
-    fn parse_fun(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_fun(&mut self) -> Result<Stmt> {
         if let Token::LeftParen(line) = self.peek() {
             return error(
                 "anonymous functions cannot be declared in this context",
@@ -204,7 +206,7 @@ impl Parser {
         Ok(Stmt::FunDecl(name, params, stmts))
     }
 
-    fn parse_fun_body(&mut self, defs: &[Token]) -> Result<Vec<Stmt>, ParserError> {
+    fn parse_fun_body(&mut self, defs: &[Token]) -> Result<Vec<Stmt>> {
         let body = match self.peek() {
             Token::LeftBrace(_) => self.parse_block(false, defs, ScopeKind::Function)?,
             t => return error("expected { before function body", t.line()),
@@ -216,7 +218,7 @@ impl Parser {
         Ok(stmts)
     }
 
-    fn parse_fun_params(&mut self, line: Line) -> Result<Vec<Token>, ParserError> {
+    fn parse_fun_params(&mut self, line: Line) -> Result<Vec<Token>> {
         self.expect_left_paren("after function name")?;
         let mut params = Vec::new();
         loop {
@@ -238,14 +240,14 @@ impl Parser {
         Ok(params)
     }
 
-    fn parse_identifier(&mut self) -> Result<Token, ParserError> {
+    fn parse_identifier(&mut self) -> Result<Token> {
         match self.next() {
             t if matches!(t, Token::Identifier(_, _)) => Ok(t),
             t => error(format!("expected an identifier, got {:?}", t), t.line()),
         }
     }
 
-    fn parse_stmt(&mut self, is_break_allowed: bool) -> Result<Stmt, ParserError> {
+    fn parse_stmt(&mut self, is_break_allowed: bool) -> Result<Stmt> {
         match self.peek() {
             Token::If(_) => self.parse_if_stmt(is_break_allowed),
             Token::While(_) => self.parse_while_stmt(),
@@ -264,7 +266,7 @@ impl Parser {
         }
     }
 
-    fn parse_return(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_return(&mut self) -> Result<Stmt> {
         let ret = self.next();
 
         if self.current_scope().is_none()
@@ -281,7 +283,7 @@ impl Parser {
         Ok(Stmt::Return(ret, expr))
     }
 
-    fn parse_if_stmt(&mut self, is_break_allowed: bool) -> Result<Stmt, ParserError> {
+    fn parse_if_stmt(&mut self, is_break_allowed: bool) -> Result<Stmt> {
         // consume if token
         self.next();
         self.expect_left_paren("after if")?;
@@ -299,7 +301,7 @@ impl Parser {
         Ok(Stmt::If(condition, Box::new(then_branch), else_branch))
     }
 
-    fn parse_while_stmt(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_while_stmt(&mut self) -> Result<Stmt> {
         // consume while token
         self.next();
         self.expect_left_paren("after while")?;
@@ -310,7 +312,7 @@ impl Parser {
         Ok(Stmt::While(condition, Box::new(stmt)))
     }
 
-    fn parse_for_stmt(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_for_stmt(&mut self) -> Result<Stmt> {
         // consume for token
         self.next();
         self.expect_left_paren("after for")?;
@@ -348,13 +350,13 @@ impl Parser {
         Ok(Stmt::Block(block_stmts))
     }
 
-    fn parse_break_stmt(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_break_stmt(&mut self) -> Result<Stmt> {
         self.next();
         self.expect_semi("after break")?;
         Ok(Stmt::Break)
     }
 
-    fn parse_print_stmt(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_print_stmt(&mut self) -> Result<Stmt> {
         // consume print token
         self.next();
         let expr = self.parse_expr(0)?;
@@ -367,7 +369,7 @@ impl Parser {
         is_break_allowed: bool,
         defs: &[Token],
         kind: ScopeKind,
-    ) -> Result<Stmt, ParserError> {
+    ) -> Result<Stmt> {
         // consume {
         self.next();
         self.enter_scope(kind);
@@ -395,13 +397,13 @@ impl Parser {
         }
     }
 
-    fn parse_expr_stmt(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_expr_stmt(&mut self) -> Result<Stmt> {
         let expr = self.parse_expr(0)?;
         self.expect_semi("after expression statement")?;
         Ok(Stmt::Expr(expr))
     }
 
-    fn parse_expr(&mut self, min_bp: u8) -> Result<Expr, ParserError> {
+    fn parse_expr(&mut self, min_bp: u8) -> Result<Expr> {
         let mut expr = match self.next() {
             op if op.is_prefix_op() => {
                 let (_, bp) = prefix_binding_power(&op)?;
@@ -462,8 +464,10 @@ impl Parser {
                 break;
             }
 
-            if let Token::LeftParen(line) = op {
-                return self.parse_call(line, expr, op);
+            match op {
+                Token::LeftParen(line) => return self.parse_call(line, expr, op),
+                Token::Dot(_) => return self.parse_get(expr),
+                _ => (),
             }
 
             // consume the operator we peeked at the beginning of the loop
@@ -490,7 +494,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_call(&mut self, line: usize, expr: Expr, op: Token) -> Result<Expr, ParserError> {
+    fn parse_call(&mut self, line: usize, expr: Expr, op: Token) -> Result<Expr> {
         // Consume (
         self.next();
 
@@ -509,7 +513,14 @@ impl Parser {
         Ok(Expr::Call(Box::new(expr), op, args))
     }
 
-    fn parse_anon_fn(&mut self, line: Line) -> Result<Expr, ParserError> {
+    fn parse_get(&mut self, expr: Expr) -> Result<Expr> {
+        // Consume .
+        self.next();
+        let name = self.parse_identifier()?;
+        Ok(Expr::Get(Box::new(expr), name))
+    }
+
+    fn parse_anon_fn(&mut self, line: Line) -> Result<Expr> {
         let params = self.parse_fun_params(line)?;
         let body = self.parse_fun_body(&params)?;
         Ok(Expr::AnonFunDecl(params, body))
@@ -523,7 +534,7 @@ impl Parser {
         self.tokens.drain(0..1).next().expect("overshot EOF")
     }
 
-    fn expect_left_paren(&mut self, pos_msg: &str) -> Result<(), ParserError> {
+    fn expect_left_paren(&mut self, pos_msg: &str) -> Result<()> {
         match self.next() {
             Token::LeftParen(_) => Ok(()),
             t => error(
@@ -533,7 +544,7 @@ impl Parser {
         }
     }
 
-    fn expect_right_paren(&mut self, pos_msg: &str) -> Result<(), ParserError> {
+    fn expect_right_paren(&mut self, pos_msg: &str) -> Result<()> {
         match self.next() {
             Token::RightParen(_) => Ok(()),
             t => error(
@@ -543,7 +554,7 @@ impl Parser {
         }
     }
 
-    fn expect_left_brace(&mut self, pos_msg: &str) -> Result<(), ParserError> {
+    fn expect_left_brace(&mut self, pos_msg: &str) -> Result<()> {
         match self.next() {
             Token::LeftBrace(_) => Ok(()),
             t => error(
@@ -553,7 +564,7 @@ impl Parser {
         }
     }
 
-    fn expect_right_brace(&mut self, pos_msg: &str) -> Result<(), ParserError> {
+    fn expect_right_brace(&mut self, pos_msg: &str) -> Result<()> {
         match self.next() {
             Token::RightBrace(_) => Ok(()),
             t => error(
@@ -563,7 +574,7 @@ impl Parser {
         }
     }
 
-    fn expect_semi(&mut self, pos_msg: &str) -> Result<(), ParserError> {
+    fn expect_semi(&mut self, pos_msg: &str) -> Result<()> {
         match self.next() {
             Token::Semicolon(_) => Ok(()),
             t => error(
@@ -581,7 +592,7 @@ impl Parser {
         self.scopes.pop().expect("attempted to pop global scope");
     }
 
-    fn declare(&mut self, id: &Token) -> Result<(), ParserError> {
+    fn declare(&mut self, id: &Token) -> Result<()> {
         if self.scopes.is_empty() {
             return Ok(());
         }
@@ -598,7 +609,7 @@ impl Parser {
         }
     }
 
-    fn define(&mut self, id: &Token) -> Result<(), ParserError> {
+    fn define(&mut self, id: &Token) -> Result<()> {
         if self.scopes.is_empty() {
             return Ok(());
         }
@@ -618,7 +629,7 @@ impl Parser {
         }
     }
 
-    fn declare_and_define(&mut self, id: &Token) -> Result<(), ParserError> {
+    fn declare_and_define(&mut self, id: &Token) -> Result<()> {
         self.declare(id)?;
         self.define(id)
     }
@@ -643,7 +654,7 @@ impl Parser {
     }
 }
 
-fn infix_binding_power(op: &Token) -> Result<(u8, u8), ParserError> {
+fn infix_binding_power(op: &Token) -> Result<(u8, u8)> {
     match op {
         Token::Equal(_) => Ok((1, 2)),
         Token::Comma(_) => Ok((3, 4)),
@@ -655,12 +666,12 @@ fn infix_binding_power(op: &Token) -> Result<(u8, u8), ParserError> {
         }
         Token::Minus(_) | Token::Plus(_) => Ok((13, 14)),
         Token::Slash(_) | Token::Star(_) => Ok((15, 16)),
-        Token::LeftParen(_) => Ok((17, 18)),
+        Token::LeftParen(_) | Token::Dot(_) => Ok((17, 18)),
         t => error(format!("invalid infix operator {}", t), t.line()),
     }
 }
 
-fn prefix_binding_power(op: &Token) -> Result<((), u8), ParserError> {
+fn prefix_binding_power(op: &Token) -> Result<((), u8)> {
     match op {
         Token::Minus(_) | Token::Bang(_) => Ok(((), 19)),
         t => error(format!("invalid prefix operator {}", t), t.line()),
@@ -672,7 +683,7 @@ mod tests {
     use super::*;
     use crate::ast;
 
-    fn parse(input: &str) -> Result<Program, ParserError> {
+    fn parse(input: &str) -> Result<Program> {
         Parser::parse_str(input)
     }
 
@@ -681,7 +692,7 @@ mod tests {
         ast::sexp(&program)
     }
 
-    fn parse_expr(input: &str) -> Result<Expr, ParserError> {
+    fn parse_expr(input: &str) -> Result<Expr> {
         Parser::parse_expr_str(input)
     }
 
@@ -946,6 +957,14 @@ mod tests {
         assert_eq!(
             r#"(class Breakfast ((fun cook () ((print "Eggs a-fryin'!"))) (fun serve (who) ((print (+ (+ "Enjoy your breakfast, " who) "."))))))"#,
             sexp(script)
+        );
+    }
+
+    #[test]
+    fn test_prop_access() {
+        assert_eq!(
+            "(. someObject someProperty)",
+            sexp_expr("someObject.someProperty")
         );
     }
 }

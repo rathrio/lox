@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 pub type Line = usize;
 
-#[derive(Debug, Clone, PartialEq,)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     // Single-character tokens
     LeftParen(Line),
@@ -78,6 +78,7 @@ impl Token {
                 | Token::Query(_)
                 | Token::Equal(_)
                 | Token::LeftParen(_)
+                | Token::Dot(_)
         )
     }
 

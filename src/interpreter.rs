@@ -344,6 +344,7 @@ impl<Out: Write> Interpreter<Out> {
             Expr::Assign(lhs, rhs) => self.interpret_assign(lhs, rhs, env),
             Expr::Call(callee, t, args) => self.interpret_call(callee, t.line(), args, env),
             Expr::AnonFunDecl(params, body) => self.interpret_anon_fun_decl(params, body, env),
+            Expr::Get(object, name) => todo!(),
         }
     }
 
