@@ -19,12 +19,12 @@ impl Class {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Instance {
-    class: Class,
+    class: Rc<RefCell<Class>>,
     fields: HashMap<String, Value>,
 }
 
 impl Instance {
-    fn new(class: Class) -> Self {
+    fn new(class: Rc<RefCell<Class>>) -> Self {
         let fields = HashMap::new();
         Self { class, fields }
     }
@@ -36,6 +36,10 @@ impl Instance {
     fn get(&self, name: &str) -> Option<&Value> {
         self.fields.get(name)
     }
+
+    fn class_name(&self) -> String {
+        self.class.borrow_mut().name.clone()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -45,8 +49,8 @@ pub enum Value {
     Bool(bool),
     Fun(String, Vec<Token>, Vec<Stmt>, ShareableEnv),
     AnonFun(Vec<Token>, Vec<Stmt>, ShareableEnv),
-    Class(Class),
-    Instance(Instance),
+    Class(Rc<RefCell<Class>>),
+    Instance(Rc<RefCell<Instance>>),
     Nil,
 }
 
@@ -94,8 +98,9 @@ impl Value {
             Value::AnonFun(params, body, closure) => {
                 self.call_fun(i, params, body, closure, &mut args)
             }
-            // TODO: avoid cloning class
-            Value::Class(class) => Ok(Value::Instance(Instance::new(class.clone()))),
+            Value::Class(class) => Ok(Value::Instance(Rc::new(RefCell::new(Instance::new(
+                class.clone(),
+            ))))),
             t => error(format!("{} is not a function", t), line),
         }
     }
@@ -132,8 +137,10 @@ impl Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Fun(name, _, _, _) => write!(f, "<fn {}>", name),
             Value::AnonFun(_, _, _) => write!(f, "<anon fn>"),
-            Value::Class(class) => write!(f, "{}", class.name),
-            Value::Instance(instance) => write!(f, "{} instance", instance.class.name),
+            Value::Class(class) => write!(f, "{}", class.borrow_mut().name),
+            Value::Instance(instance) => {
+                write!(f, "{} instance", instance.borrow_mut().class_name())
+            }
         }
     }
 }
@@ -183,7 +190,7 @@ impl Env {
         if depth == 0 {
             self.get(name)
         } else if let Some(e) = &self.enclosing {
-            e.borrow().get_at_depth(name, depth - 1)
+            e.borrow_mut().get_at_depth(name, depth - 1)
         } else {
             Err(format!("variable lookup failed for {}", &name))
         }
@@ -193,7 +200,7 @@ impl Env {
         if let Some(v) = self.values.get(&name) {
             Ok(v.clone())
         } else if let Some(e) = &self.enclosing {
-            e.borrow().get(name)
+            e.borrow_mut().get(name)
         } else {
             Err(format!("undefined variable \"{}\"", &name))
         }
@@ -356,7 +363,7 @@ impl<Out: Write> Interpreter<Out> {
 
     fn interpret_get(&mut self, object: &Expr, name: &Token, env: ShareableEnv) -> Result<Value> {
         match self.interpret_expr(object, env)? {
-            Value::Instance(instance) => match instance.get(&name.to_string()) {
+            Value::Instance(instance) => match instance.borrow_mut().get(&name.to_string()) {
                 Some(v) => Ok(v.clone()),
                 None => error(format!("undefined property {}", name), name.line()),
             },
@@ -372,9 +379,9 @@ impl<Out: Write> Interpreter<Out> {
         env: ShareableEnv,
     ) -> Result<Value> {
         match self.interpret_expr(object, env.clone())? {
-            Value::Instance(mut instance) => {
+            Value::Instance(instance) => {
                 let v = self.interpret_expr(value, env)?;
-                instance.set(name.to_string(), v.clone());
+                instance.borrow_mut().set(name.to_string(), v.clone());
                 dbg!(instance);
                 Ok(v)
             }
@@ -557,9 +564,9 @@ impl<Out: Write> Interpreter<Out> {
 
     fn interpret_var(&self, name: &Token, depth: Option<u8>, env: ShareableEnv) -> Result<Value> {
         let resolved_var = if let Some(d) = depth {
-            env.borrow().get_at_depth(name.to_string(), d)
+            env.borrow_mut().get_at_depth(name.to_string(), d)
         } else {
-            self.env.borrow().get(name.to_string())
+            self.env.borrow_mut().get(name.to_string())
         };
 
         resolved_var.map_err(|msg| RuntimeError::new(msg, name.line()))
@@ -588,7 +595,10 @@ impl<Out: Write> Interpreter<Out> {
     ) -> Result<ControlFlow> {
         let class_name = name.to_string();
         env.borrow_mut().define(class_name.clone(), Value::Nil);
-        let class = Value::Class(Class::new(class_name.clone(), methods.to_vec()));
+        let class = Value::Class(Rc::new(RefCell::new(Class::new(
+            class_name.clone(),
+            methods.to_vec(),
+        ))));
         env.borrow_mut()
             .assign(class_name.clone(), class)
             .map_err(|_| {
