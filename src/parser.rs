@@ -464,29 +464,36 @@ impl Parser {
                 break;
             }
 
-            match op {
-                Token::LeftParen(line) => return self.parse_call(line, expr, op),
-                Token::Dot(_) => return self.parse_get(expr),
-                _ => (),
-            }
-
             // consume the operator we peeked at the beginning of the loop
             self.next();
 
-            if let Token::Query(_) = op {
-                let conclusion = self.parse_expr(0)?;
-                if let Token::Colon(_) = self.next() {
-                    let alternate = self.parse_expr(r_bp)?;
-                    expr = Expr::Ternary(Box::new(expr), Box::new(conclusion), Box::new(alternate));
-                } else {
-                    return error("missing \":\" in ternary", op.line());
+            match op {
+                Token::Query(_) => {
+                    let conclusion = self.parse_expr(0)?;
+                    if let Token::Colon(_) = self.next() {
+                        let alternate = self.parse_expr(r_bp)?;
+                        expr = Expr::Ternary(
+                            Box::new(expr),
+                            Box::new(conclusion),
+                            Box::new(alternate),
+                        );
+                    } else {
+                        return error("missing \":\" in ternary", op.line());
+                    }
                 }
-            } else {
-                let rhs = self.parse_expr(r_bp)?;
-                expr = Expr::Binary(Box::new(expr), op.clone(), Box::new(rhs));
+                Token::LeftParen(line) => {
+                    expr = self.parse_call(line, expr, op.clone())?;
+                }
+                Token::Dot(_) => {
+                    expr = self.parse_get(expr)?;
+                }
+                _ => {
+                    let rhs = self.parse_expr(r_bp)?;
+                    expr = Expr::Binary(Box::new(expr), op.clone(), Box::new(rhs));
 
-                if let Token::Equal(_) = op {
-                    expr = try_into_assign(expr, op.line())?;
+                    if let Token::Equal(_) = op {
+                        expr = try_into_assign(expr, op.line())?;
+                    }
                 }
             }
         }
@@ -495,9 +502,6 @@ impl Parser {
     }
 
     fn parse_call(&mut self, line: usize, expr: Expr, op: Token) -> Result<Expr> {
-        // Consume (
-        self.next();
-
         let args = if let Token::RightParen(_) = self.peek() {
             Vec::new()
         } else {
@@ -514,8 +518,6 @@ impl Parser {
     }
 
     fn parse_get(&mut self, expr: Expr) -> Result<Expr> {
-        // Consume .
-        self.next();
         let name = self.parse_identifier()?;
         Ok(Expr::Get(Box::new(expr), name))
     }
@@ -965,6 +967,11 @@ mod tests {
         assert_eq!(
             "(. someObject someProperty)",
             sexp_expr("someObject.someProperty")
+        );
+
+        assert_eq!(
+            "(call (. (call (. egg scramble) (3)) with) (cheddar))",
+            sexp_expr("egg.scramble(3).with(cheddar)")
         );
     }
 }
