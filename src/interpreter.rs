@@ -6,23 +6,56 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Class {
+    name: String,
+    methods: Vec<Stmt>,
+}
+
+impl Class {
+    fn new(name: String, methods: Vec<Stmt>) -> Self {
+        Self { name, methods }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Instance {
+    class: Class,
+    fields: HashMap<String, Value>,
+}
+
+impl Instance {
+    fn new(class: Class) -> Self {
+        let fields = HashMap::new();
+        Self { class, fields }
+    }
+
+    fn set(&mut self, name: String, value: Value) {
+        self.fields.insert(name, value);
+    }
+
+    fn get(&self, name: &str) -> Option<&Value> {
+        self.fields.get(name)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Number(f64),
     Str(String),
     Bool(bool),
     Fun(String, Vec<Token>, Vec<Stmt>, ShareableEnv),
     AnonFun(Vec<Token>, Vec<Stmt>, ShareableEnv),
-    Class(String, Vec<Stmt>),
-    Instance(Box<Value>),
+    Class(Class),
+    Instance(Instance),
     Nil,
 }
 
 impl Value {
-    fn arity(&self, line: Line) -> Result<usize, RuntimeError> {
+    fn arity(&self, line: Line) -> Result<usize> {
         match self {
             Value::Fun(_, params, _, _) => Ok(params.len()),
             Value::AnonFun(params, _, _) => Ok(params.len()),
-            Value::Class(_, _) => Ok(0),
+            Value::Class(_) => Ok(0),
             t => error(format!("{} is not a function", t), line),
         }
     }
@@ -34,7 +67,7 @@ impl Value {
         body: &[Stmt],
         closure: &ShareableEnv,
         args: &mut Vec<Value>,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<Value> {
         let mut local_env = Env::new(Some(closure.clone()));
 
         for param in params.iter() {
@@ -53,7 +86,7 @@ impl Value {
         i: &mut Interpreter<Out>,
         mut args: Vec<Value>,
         line: Line,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<Value> {
         match self {
             Value::Fun(_, params, body, closure) => {
                 self.call_fun(i, params, body, closure, &mut args)
@@ -62,16 +95,11 @@ impl Value {
                 self.call_fun(i, params, body, closure, &mut args)
             }
             // TODO: avoid cloning class
-            Value::Class(name, methods) => Ok(Value::Instance(Box::new(Value::Class(
-                name.clone(),
-                methods.clone(),
-            )))),
+            Value::Class(class) => Ok(Value::Instance(Instance::new(class.clone()))),
             t => error(format!("{} is not a function", t), line),
         }
     }
-}
 
-impl Value {
     fn equals(&self, other: &Value) -> bool {
         match (self, other) {
             (Value::Number(l), Value::Number(r)) => l == r,
@@ -104,8 +132,8 @@ impl Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Fun(name, _, _, _) => write!(f, "<fn {}>", name),
             Value::AnonFun(_, _, _) => write!(f, "<anon fn>"),
-            Value::Class(name, _) => write!(f, "{}", name),
-            Value::Instance(class) => write!(f, "{} instance", class),
+            Value::Class(class) => write!(f, "{}", class.name),
+            Value::Instance(instance) => write!(f, "{} instance", instance.class.name),
         }
     }
 }
@@ -125,7 +153,9 @@ impl RuntimeError {
     }
 }
 
-fn error<T>(report: impl Into<String>, line: Line) -> Result<T, RuntimeError> {
+type Result<T> = core::result::Result<T, RuntimeError>;
+
+fn error<T>(report: impl Into<String>, line: Line) -> Result<T> {
     Err(RuntimeError::new(report, line))
 }
 
@@ -149,7 +179,7 @@ impl Env {
         self.values.insert(name, value);
     }
 
-    pub fn get_at_depth(&self, name: String, depth: u8) -> Result<Value, String> {
+    pub fn get_at_depth(&self, name: String, depth: u8) -> core::result::Result<Value, String> {
         if depth == 0 {
             self.get(name)
         } else if let Some(e) = &self.enclosing {
@@ -159,7 +189,7 @@ impl Env {
         }
     }
 
-    pub fn get(&self, name: String) -> Result<Value, String> {
+    pub fn get(&self, name: String) -> core::result::Result<Value, String> {
         if let Some(v) = self.values.get(&name) {
             Ok(v.clone())
         } else if let Some(e) = &self.enclosing {
@@ -169,7 +199,7 @@ impl Env {
         }
     }
 
-    pub fn assign(&mut self, name: String, value: Value) -> Result<Value, String> {
+    pub fn assign(&mut self, name: String, value: Value) -> core::result::Result<Value, String> {
         if self.values.get(&name).is_some() {
             self.values.insert(name, value.clone());
             Ok(value)
@@ -199,15 +229,11 @@ impl<Out: Write> Interpreter<Out> {
         Self { out, env }
     }
 
-    pub fn interpret(&mut self, program: &Program) -> Result<ControlFlow, RuntimeError> {
+    pub fn interpret(&mut self, program: &Program) -> Result<ControlFlow> {
         self.interpret_stmts(&program.stmts, self.env.clone())
     }
 
-    fn interpret_stmts(
-        &mut self,
-        stmts: &[Stmt],
-        env: ShareableEnv,
-    ) -> Result<ControlFlow, RuntimeError> {
+    fn interpret_stmts(&mut self, stmts: &[Stmt], env: ShareableEnv) -> Result<ControlFlow> {
         for stmt in stmts {
             match self.interpret_stmt(stmt, env.clone())? {
                 ControlFlow::Break => return Ok(ControlFlow::Break),
@@ -219,11 +245,7 @@ impl<Out: Write> Interpreter<Out> {
         Ok(ControlFlow::Continue)
     }
 
-    fn interpret_stmt(
-        &mut self,
-        stmt: &Stmt,
-        env: ShareableEnv,
-    ) -> Result<ControlFlow, RuntimeError> {
+    fn interpret_stmt(&mut self, stmt: &Stmt, env: ShareableEnv) -> Result<ControlFlow> {
         match stmt {
             Stmt::Expr(expr) => {
                 self.interpret_expr(expr, env)?;
@@ -249,11 +271,7 @@ impl<Out: Write> Interpreter<Out> {
         }
     }
 
-    fn interpret_return(
-        &mut self,
-        expr: &Expr,
-        env: ShareableEnv,
-    ) -> Result<ControlFlow, RuntimeError> {
+    fn interpret_return(&mut self, expr: &Expr, env: ShareableEnv) -> Result<ControlFlow> {
         Ok(ControlFlow::Return(self.interpret_expr(expr, env)?))
     }
 
@@ -262,7 +280,7 @@ impl<Out: Write> Interpreter<Out> {
         condition: &Expr,
         stmt: &Stmt,
         env: ShareableEnv,
-    ) -> Result<ControlFlow, RuntimeError> {
+    ) -> Result<ControlFlow> {
         while self.interpret_expr(condition, env.clone())?.is_truthy() {
             if let ControlFlow::Break = self.interpret_stmt(stmt, env.clone())? {
                 break;
@@ -278,7 +296,7 @@ impl<Out: Write> Interpreter<Out> {
         env: ShareableEnv,
         then_branch: &Stmt,
         else_branch: &Option<Box<Stmt>>,
-    ) -> Result<ControlFlow, RuntimeError> {
+    ) -> Result<ControlFlow> {
         let value = self.interpret_expr(condition, env.clone())?;
 
         if value.is_truthy() {
@@ -290,21 +308,12 @@ impl<Out: Write> Interpreter<Out> {
         }
     }
 
-    fn interpret_block(
-        &mut self,
-        stmts: &[Stmt],
-        env: ShareableEnv,
-    ) -> Result<ControlFlow, RuntimeError> {
+    fn interpret_block(&mut self, stmts: &[Stmt], env: ShareableEnv) -> Result<ControlFlow> {
         let local_env = Env::new(Some(env));
         self.interpret_stmts(stmts, Rc::new(RefCell::new(local_env)))
     }
 
-    fn interpret_var_decl(
-        &mut self,
-        name: &Token,
-        expr: &Expr,
-        env: ShareableEnv,
-    ) -> Result<(), RuntimeError> {
+    fn interpret_var_decl(&mut self, name: &Token, expr: &Expr, env: ShareableEnv) -> Result<()> {
         if let Token::Identifier(_, name) = name {
             let init_value = self.interpret_expr(expr, env.clone())?;
             env.borrow_mut().define(name.into(), init_value);
@@ -315,7 +324,7 @@ impl<Out: Write> Interpreter<Out> {
         Ok(())
     }
 
-    fn interpret_print(&mut self, expr: &Expr, env: ShareableEnv) -> Result<(), RuntimeError> {
+    fn interpret_print(&mut self, expr: &Expr, env: ShareableEnv) -> Result<()> {
         let value = self.interpret_expr(expr, env)?;
         self.out
             .write_all(format!("{}\n", value).as_bytes())
@@ -324,11 +333,7 @@ impl<Out: Write> Interpreter<Out> {
         Ok(())
     }
 
-    pub fn interpret_expr(
-        &mut self,
-        expr: &Expr,
-        env: ShareableEnv,
-    ) -> Result<Value, RuntimeError> {
+    pub fn interpret_expr(&mut self, expr: &Expr, env: ShareableEnv) -> Result<Value> {
         match expr {
             Expr::Number(n) => Ok(Value::Number(*n)),
             Expr::Str(s) => Ok(Value::Str(s.into())),
@@ -344,8 +349,36 @@ impl<Out: Write> Interpreter<Out> {
             Expr::Assign(lhs, rhs) => self.interpret_assign(lhs, rhs, env),
             Expr::Call(callee, t, args) => self.interpret_call(callee, t.line(), args, env),
             Expr::AnonFunDecl(params, body) => self.interpret_anon_fun_decl(params, body, env),
-            Expr::Get(object, name) => todo!(),
-            Expr::Set(object, name, value) => todo!(),
+            Expr::Get(object, name) => self.interpret_get(object, name, env),
+            Expr::Set(object, name, value) => self.interpret_set(object, name, value, env),
+        }
+    }
+
+    fn interpret_get(&mut self, object: &Expr, name: &Token, env: ShareableEnv) -> Result<Value> {
+        match self.interpret_expr(object, env)? {
+            Value::Instance(instance) => match instance.get(&name.to_string()) {
+                Some(v) => Ok(v.clone()),
+                None => error(format!("undefined property {}", name), name.line()),
+            },
+            _ => error("only instances have properties", name.line()),
+        }
+    }
+
+    fn interpret_set(
+        &mut self,
+        object: &Expr,
+        name: &Token,
+        value: &Expr,
+        env: ShareableEnv,
+    ) -> Result<Value> {
+        match self.interpret_expr(object, env.clone())? {
+            Value::Instance(mut instance) => {
+                let v = self.interpret_expr(value, env)?;
+                instance.set(name.to_string(), v.clone());
+                dbg!(instance);
+                Ok(v)
+            }
+            _ => error("only instances have fields", name.line()),
         }
     }
 
@@ -354,7 +387,7 @@ impl<Out: Write> Interpreter<Out> {
         params: &[Token],
         body: &[Stmt],
         env: ShareableEnv,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<Value> {
         Ok(Value::AnonFun(params.to_vec(), body.to_vec(), env))
     }
 
@@ -364,7 +397,7 @@ impl<Out: Write> Interpreter<Out> {
         line: Line,
         args: &[Expr],
         env: ShareableEnv,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<Value> {
         let callable = self.interpret_expr(callee, env.clone())?;
 
         let mut arguments = Vec::new();
@@ -387,12 +420,7 @@ impl<Out: Write> Interpreter<Out> {
         callable.call(self, arguments, line)
     }
 
-    fn interpret_assign(
-        &mut self,
-        lhs: &Token,
-        rhs: &Expr,
-        env: ShareableEnv,
-    ) -> Result<Value, RuntimeError> {
+    fn interpret_assign(&mut self, lhs: &Token, rhs: &Expr, env: ShareableEnv) -> Result<Value> {
         match lhs {
             Token::Identifier(line, name) => {
                 let value = self.interpret_expr(rhs, env.clone())?;
@@ -409,7 +437,7 @@ impl<Out: Write> Interpreter<Out> {
         op: &Token,
         expr: &Expr,
         env: ShareableEnv,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<Value> {
         let value = self.interpret_expr(expr, env)?;
 
         match op {
@@ -437,7 +465,7 @@ impl<Out: Write> Interpreter<Out> {
         op: &Token,
         rhs: &Expr,
         env: ShareableEnv,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<Value> {
         let left = self.interpret_expr(lhs, env.clone())?;
 
         // Handle short-circuiting logical operators
@@ -517,7 +545,7 @@ impl<Out: Write> Interpreter<Out> {
         conclusion_expr: &Expr,
         alternate_expr: &Expr,
         env: ShareableEnv,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<Value> {
         let condition = self.interpret_expr(condition_expr, env.clone())?;
 
         if condition.is_truthy() {
@@ -527,12 +555,7 @@ impl<Out: Write> Interpreter<Out> {
         }
     }
 
-    fn interpret_var(
-        &self,
-        name: &Token,
-        depth: Option<u8>,
-        env: ShareableEnv,
-    ) -> Result<Value, RuntimeError> {
+    fn interpret_var(&self, name: &Token, depth: Option<u8>, env: ShareableEnv) -> Result<Value> {
         let resolved_var = if let Some(d) = depth {
             env.borrow().get_at_depth(name.to_string(), d)
         } else {
@@ -548,7 +571,7 @@ impl<Out: Write> Interpreter<Out> {
         params: &[Token],
         stmts: &[Stmt],
         env: ShareableEnv,
-    ) -> Result<ControlFlow, RuntimeError> {
+    ) -> Result<ControlFlow> {
         let name = name.to_string();
         env.borrow_mut().define(
             name.clone(),
@@ -562,10 +585,10 @@ impl<Out: Write> Interpreter<Out> {
         name: &Token,
         methods: &[Stmt],
         env: ShareableEnv,
-    ) -> Result<ControlFlow, RuntimeError> {
+    ) -> Result<ControlFlow> {
         let class_name = name.to_string();
         env.borrow_mut().define(class_name.clone(), Value::Nil);
-        let class = Value::Class(class_name.clone(), methods.to_vec());
+        let class = Value::Class(Class::new(class_name.clone(), methods.to_vec()));
         env.borrow_mut()
             .assign(class_name.clone(), class)
             .map_err(|_| {
@@ -585,14 +608,14 @@ mod tests {
 
     use super::*;
 
-    fn interpret_expr(input: &str) -> Result<Value, RuntimeError> {
+    fn interpret_expr(input: &str) -> Result<Value> {
         let expr = Parser::parse_expr_str(input).expect("syntax error");
         let mut interpreter = Interpreter::new(io::stdout());
         let env = Rc::new(RefCell::new(Env::new(None)));
         interpreter.interpret_expr(&expr, env)
     }
 
-    fn interpret(input: &str, out: &mut impl Write) -> Result<ControlFlow, RuntimeError> {
+    fn interpret(input: &str, out: &mut impl Write) -> Result<ControlFlow> {
         let program = Parser::parse_str(input).expect("syntax error");
         let mut interpreter = Interpreter::new(out);
         interpreter.interpret(&program)
