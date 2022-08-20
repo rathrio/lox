@@ -158,6 +158,13 @@ fn test_while() {
             print "y";
         "#;
     assert_eq!("(while true (print \"y\"))", sexp(script));
+
+    let script = r#"
+        while (true) {
+            print "y";
+        }
+        "#;
+    assert_eq!("(while true (block (print \"y\")))", sexp(script));
 }
 
 #[test]
@@ -172,10 +179,11 @@ fn test_for() {
     );
 
     let script = r#"
-        for (;;)
+        for (;;) {
             print "y";
+        }
         "#;
-    assert_eq!("(block (while true (print \"y\")))", sexp(script));
+    assert_eq!("(block (while true (block (print \"y\"))))", sexp(script));
 }
 
 #[test]
@@ -257,6 +265,19 @@ fn test_return_outside_function() {
 }
 
 #[test]
+fn test_nested_return() {
+    let script = r#"
+        fun add() {
+            while (true) {
+                return;
+            }
+        }
+        "#;
+
+    parse(script).unwrap();
+}
+
+#[test]
 fn test_classes() {
     assert_eq!("(class Dog ())", sexp("class Dog {}"));
 
@@ -297,4 +318,20 @@ fn test_set() {
         "(.= (. (. breakfast omelette) filling) meat ham)",
         sexp_expr("breakfast.omelette.filling.meat = ham")
     );
+}
+
+#[test]
+fn test_fibonacci() {
+    let script = r#"
+    var a = 0;
+    var temp;
+
+    for (var b = 1; a < 10; b = temp + b) {
+        print a;
+        temp = a;
+        a = b;
+    }
+    "#;
+
+    assert_eq!("(var a 0) (var temp nil) (block (var b 1) (while (< a 10) (block (print a) (= temp a) (= a b) (= b (+ temp b)))))", sexp(script));
 }

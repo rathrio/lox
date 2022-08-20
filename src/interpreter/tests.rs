@@ -461,3 +461,21 @@ fn test_properties() {
     interpret(script, &mut out).unwrap();
     assert_outputted(out, "true".into());
 }
+
+#[test]
+fn test_fibonacci() {
+    let mut out = Vec::new();
+    let script = r#"
+    var a = 0;
+    var temp;
+
+    for (var b = 1; a < 10; b = temp + b) {
+        print a;
+        temp = a;
+        a = b;
+    }
+    "#;
+
+    interpret(script, &mut out).unwrap();
+    assert_outputted(out, "0\n1\n1\n2\n3\n5\n8".into());
+}

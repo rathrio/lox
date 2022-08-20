@@ -53,21 +53,14 @@ fn try_into_args(expr: Expr) -> Result<Vec<Expr>> {
 }
 
 #[derive(Debug)]
-enum ScopeKind {
-    Function,
-    Block,
-}
-
-#[derive(Debug)]
 struct Scope {
-    kind: ScopeKind,
     defs: HashMap<String, bool>,
 }
 
 impl Scope {
-    fn new(kind: ScopeKind) -> Self {
+    fn new() -> Self {
         let defs = HashMap::new();
-        Self { kind, defs }
+        Self { defs }
     }
 
     fn is_declared(&self, id: &str) -> bool {
@@ -89,6 +82,7 @@ type Result<T> = core::result::Result<T, ParserError>;
 pub struct Parser {
     tokens: Vec<Token>,
     scopes: Vec<Scope>,
+    within_function: bool,
 }
 
 impl Parser {
@@ -96,7 +90,11 @@ impl Parser {
         let mut s = Lexer::new(input.to_string());
         let tokens = s.lex_tokens();
         let scopes = vec![];
-        Self { tokens, scopes }
+        Self {
+            tokens,
+            scopes,
+            within_function: false,
+        }
     }
 
     pub fn parse_str(input: &str) -> Result<Program> {
@@ -209,14 +207,19 @@ impl Parser {
     }
 
     fn parse_fun_body(&mut self, defs: &[Token]) -> Result<Vec<Stmt>> {
+        let prev_within_function = self.within_function;
+        self.within_function = true;
+
         let body = match self.peek() {
-            Token::LeftBrace(_) => self.parse_block(false, defs, ScopeKind::Function)?,
+            Token::LeftBrace(_) => self.parse_block(false, defs)?,
             t => return error("expected { before function body", t.line()),
         };
         let stmts = match body {
             Stmt::Block(list) => list,
             _ => unreachable!(),
         };
+
+        self.within_function = prev_within_function;
         Ok(stmts)
     }
 
@@ -262,7 +265,7 @@ impl Parser {
                 }
             }
             Token::Print(_) => self.parse_print_stmt(),
-            Token::LeftBrace(_) => self.parse_block(is_break_allowed, &[], ScopeKind::Block),
+            Token::LeftBrace(_) => self.parse_block(is_break_allowed, &[]),
             Token::Return(_) => self.parse_return(),
             _ => self.parse_expr_stmt(),
         }
@@ -271,9 +274,7 @@ impl Parser {
     fn parse_return(&mut self) -> Result<Stmt> {
         let ret = self.next();
 
-        if self.current_scope().is_none()
-            || !matches!(self.current_scope().unwrap().kind, ScopeKind::Function)
-        {
+        if !self.within_function {
             return error("cannot return from top level code", ret.line());
         }
 
@@ -319,6 +320,7 @@ impl Parser {
         self.next();
         self.expect_left_paren("after for")?;
 
+        self.enter_scope();
         let mut block_stmts: Vec<Stmt> = Vec::new();
 
         match self.peek() {
@@ -342,13 +344,23 @@ impl Parser {
         self.expect_right_paren("after for condition")?;
 
         let for_stmt = self.parse_stmt(true)?;
+
         let while_stmt = if let Some(i) = increment {
-            Stmt::Block(vec![for_stmt, Stmt::Expr(i)])
+            let increment_stmt = Stmt::Expr(i);
+            match for_stmt {
+                Stmt::Block(mut stmts) => {
+                    stmts.push(increment_stmt);
+                    Stmt::Block(stmts)
+                }
+                _ => Stmt::Block(vec![for_stmt, increment_stmt]),
+            }
         } else {
             for_stmt
         };
 
         block_stmts.push(Stmt::While(condition, Box::new(while_stmt)));
+        self.exit_scope();
+
         Ok(Stmt::Block(block_stmts))
     }
 
@@ -366,15 +378,10 @@ impl Parser {
         Ok(Stmt::Print(expr))
     }
 
-    fn parse_block(
-        &mut self,
-        is_break_allowed: bool,
-        defs: &[Token],
-        kind: ScopeKind,
-    ) -> Result<Stmt> {
+    fn parse_block(&mut self, is_break_allowed: bool, defs: &[Token]) -> Result<Stmt> {
         // consume {
         self.next();
-        self.enter_scope(kind);
+        self.enter_scope();
 
         for def in defs {
             self.declare_and_define(def)?;
@@ -593,8 +600,8 @@ impl Parser {
         }
     }
 
-    fn enter_scope(&mut self, kind: ScopeKind) {
-        self.scopes.push(Scope::new(kind));
+    fn enter_scope(&mut self) {
+        self.scopes.push(Scope::new());
     }
 
     fn exit_scope(&mut self) {
