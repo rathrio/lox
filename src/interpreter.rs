@@ -8,12 +8,16 @@ use crate::{
 #[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     name: String,
-    methods: Vec<Stmt>,
+    methods: HashMap<String, Value>,
 }
 
 impl Class {
-    fn new(name: String, methods: Vec<Stmt>) -> Self {
+    fn new(name: String, methods: HashMap<String, Value>) -> Self {
         Self { name, methods }
+    }
+
+    fn method(&self, name: &str) -> Option<&Value> {
+        self.methods.get(name)
     }
 }
 
@@ -43,12 +47,50 @@ impl Instance {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Function {
+    name: String,
+    params: Vec<Token>,
+    stmts: Vec<Stmt>,
+    closure: ShareableEnv,
+}
+
+impl Function {
+    fn new(
+        name: impl Into<String>,
+        params: Vec<Token>,
+        stmts: Vec<Stmt>,
+        closure: ShareableEnv,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            params,
+            stmts,
+            closure,
+        }
+    }
+
+    fn call(&self, i: &mut Interpreter<impl Write>, args: &mut Vec<Value>) -> Result<Value> {
+        let mut local_env = Env::new(Some(self.closure.clone()));
+
+        for param in self.params.iter() {
+            let v = args.remove(0);
+            local_env.define(param.to_string(), v);
+        }
+
+        match i.interpret_stmts(&self.stmts, Rc::new(RefCell::new(local_env)))? {
+            ControlFlow::Return(v) => Ok(v),
+            _ => Ok(Value::Nil),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Number(f64),
     Str(String),
     Bool(bool),
-    Fun(String, Vec<Token>, Vec<Stmt>, ShareableEnv),
-    AnonFun(Vec<Token>, Vec<Stmt>, ShareableEnv),
+    Fun(Function),
+    // AnonFun(Vec<Token>, Vec<Stmt>, ShareableEnv),
     Class(Rc<RefCell<Class>>),
     Instance(Rc<RefCell<Instance>>),
     Nil,
@@ -57,31 +99,9 @@ pub enum Value {
 impl Value {
     fn arity(&self, line: Line) -> Result<usize> {
         match self {
-            Value::Fun(_, params, _, _) => Ok(params.len()),
-            Value::AnonFun(params, _, _) => Ok(params.len()),
+            Value::Fun(fun) => Ok(fun.params.len()),
             Value::Class(_) => Ok(0),
             t => error(format!("{} is not a function", t), line),
-        }
-    }
-
-    fn call_fun<Out: Write>(
-        &self,
-        i: &mut Interpreter<Out>,
-        params: &[Token],
-        body: &[Stmt],
-        closure: &ShareableEnv,
-        args: &mut Vec<Value>,
-    ) -> Result<Value> {
-        let mut local_env = Env::new(Some(closure.clone()));
-
-        for param in params.iter() {
-            let v = args.remove(0);
-            local_env.define(param.to_string(), v);
-        }
-
-        match i.interpret_stmts(body, Rc::new(RefCell::new(local_env)))? {
-            ControlFlow::Return(v) => Ok(v),
-            _ => Ok(Value::Nil),
         }
     }
 
@@ -92,12 +112,7 @@ impl Value {
         line: Line,
     ) -> Result<Value> {
         match self {
-            Value::Fun(_, params, body, closure) => {
-                self.call_fun(i, params, body, closure, &mut args)
-            }
-            Value::AnonFun(params, body, closure) => {
-                self.call_fun(i, params, body, closure, &mut args)
-            }
+            Value::Fun(fun) => fun.call(i, &mut args),
             Value::Class(class) => Ok(Value::Instance(Rc::new(RefCell::new(Instance::new(
                 class.clone(),
             ))))),
@@ -135,8 +150,7 @@ impl Display for Value {
             Value::Str(s) => write!(f, "{:?}", s),
             Value::Bool(b) => b.fmt(f),
             Value::Nil => write!(f, "nil"),
-            Value::Fun(name, _, _, _) => write!(f, "<fn {}>", name),
-            Value::AnonFun(_, _, _) => write!(f, "<anon fn>"),
+            Value::Fun(fun) => write!(f, "<fn {}>", fun.name),
             Value::Class(class) => write!(f, "{}", class.borrow_mut().name),
             Value::Instance(instance) => {
                 write!(f, "{} instance", instance.borrow_mut().class_name())
@@ -394,7 +408,8 @@ impl<Out: Write> Interpreter<Out> {
         body: &[Stmt],
         env: ShareableEnv,
     ) -> Result<Value> {
-        Ok(Value::AnonFun(params.to_vec(), body.to_vec(), env))
+        let fun = Function::new("<anon fn>", params.to_vec(), body.to_vec(), env);
+        Ok(Value::Fun(fun))
     }
 
     fn interpret_call(
@@ -579,10 +594,8 @@ impl<Out: Write> Interpreter<Out> {
         env: ShareableEnv,
     ) -> Result<ControlFlow> {
         let name = name.to_string();
-        env.borrow_mut().define(
-            name.clone(),
-            Value::Fun(name, params.to_vec(), stmts.to_vec(), env.clone()),
-        );
+        let fun = Function::new(name.clone(), params.to_vec(), stmts.to_vec(), env.clone());
+        env.borrow_mut().define(name, Value::Fun(fun));
         Ok(ControlFlow::Continue)
     }
 
@@ -594,10 +607,26 @@ impl<Out: Write> Interpreter<Out> {
     ) -> Result<ControlFlow> {
         let class_name = name.to_string();
         env.borrow_mut().define(class_name.clone(), Value::Nil);
+
+        let mut methods_map = HashMap::new();
+        for method in methods {
+            if let Stmt::FunDecl(name, params, body) = method {
+                let fun = Function::new(
+                    name.to_string(),
+                    params.to_vec(),
+                    body.to_vec(),
+                    env.clone(),
+                );
+
+                methods_map.insert(fun.name.clone(), Value::Fun(fun));
+            }
+        }
+
         let class = Value::Class(Rc::new(RefCell::new(Class::new(
             class_name.clone(),
-            methods.to_vec(),
+            methods_map,
         ))));
+
         env.borrow_mut()
             .assign(class_name.clone(), class)
             .map_err(|_| {
@@ -606,6 +635,7 @@ impl<Out: Write> Interpreter<Out> {
                     name.line(),
                 )
             })?;
+
         Ok(ControlFlow::Continue)
     }
 }

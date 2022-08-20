@@ -479,3 +479,20 @@ fn test_fibonacci() {
     interpret(script, &mut out).unwrap();
     assert_outputted(out, "0\n1\n1\n2\n3\n5\n8".into());
 }
+
+#[test]
+fn test_method() {
+    let mut out = Vec::new();
+    let script = r#"
+    class Bacon {
+        eat() {
+          print "Crunch crunch crunch!";
+        }
+    }
+
+    Bacon().eat();
+    "#;
+
+    interpret(script, &mut out).unwrap();
+    assert_outputted(out, "Crunch crunch crunch!".into());
+}
