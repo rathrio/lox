@@ -1,0 +1,25 @@
+class Cat {
+  init(name, age) {
+    this.name = name;
+  } 
+
+  miau() {
+    return "Hi, my name is " + this.name;
+  }
+}
+
+class Dog {
+  init(name, age) {
+    this.name = name;
+  } 
+
+  bark() {
+    return "Hi, my name is " + this.name;
+  }
+}
+
+var cat = Cat("Tifou", 5);
+var dog = Dog("Oscar", 3);
+
+print cat.miau();
+print dog.bark();

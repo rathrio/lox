@@ -11,6 +11,8 @@ pub struct Class {
     methods: HashMap<String, Value>,
 }
 
+const INITIALIZER_NAME: &str = "init";
+
 impl Class {
     fn new(name: String, methods: HashMap<String, Value>) -> Self {
         Self { name, methods }
@@ -18,6 +20,13 @@ impl Class {
 
     fn method(&self, name: &str) -> Option<&Value> {
         self.methods.get(name)
+    }
+
+    fn init_arity(&self, line: Line) -> usize {
+        match self.method(INITIALIZER_NAME) {
+            Some(i) => i.arity(line).unwrap(),
+            None => 0,
+        }
     }
 }
 
@@ -109,7 +118,7 @@ impl Value {
     fn arity(&self, line: Line) -> Result<usize> {
         match self {
             Value::Fun(fun) => Ok(fun.params.len()),
-            Value::Class(_) => Ok(0),
+            Value::Class(class) => Ok(class.init_arity(line)),
             t => error(format!("{} is not a function", t), line),
         }
     }
@@ -122,9 +131,14 @@ impl Value {
     ) -> Result<Value> {
         match self {
             Value::Fun(fun) => fun.call(i, &mut args),
-            Value::Class(class) => Ok(Value::Instance(Rc::new(RefCell::new(Instance::new(
-                class.clone(),
-            ))))),
+            Value::Class(class) => {
+                let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
+                if let Some(init) = class.method(INITIALIZER_NAME) {
+                    init.bind(instance.clone()).call(i, args, line)?;
+                }
+
+                Ok(Value::Instance(instance))
+            }
             t => error(format!("{} is not a function", t), line),
         }
     }

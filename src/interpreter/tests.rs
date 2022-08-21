@@ -538,3 +538,21 @@ fn test_this_in_callback() {
     interpret(script, &mut out).unwrap();
     assert_outputted(out, "Thing instance".into());
 }
+
+#[test]
+fn test_init() {
+    let mut out = Vec::new();
+    let script = r#"
+    class Dog {
+        init(name) {
+            this.name = name;
+        }
+    }
+
+    var dog = Dog("Fido");
+    print dog.name;
+    "#;
+
+    interpret(script, &mut out).unwrap();
+    assert_outputted(out, "\"Fido\"".into());
+}

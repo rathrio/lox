@@ -20,69 +20,18 @@ impl ParserError {
     }
 }
 
+type Result<T> = core::result::Result<T, ParserError>;
+
 fn error<T>(report: impl Into<String>, line: Line) -> Result<T> {
     Err(ParserError::new(report, line))
 }
-
-fn try_into_assign(expr: Expr, line: Line) -> Result<Expr> {
-    if let Expr::Binary(lhs, Token::Equal(_), rhs) = expr {
-        match *lhs {
-            Expr::Var(name, _) => return Ok(Expr::Assign(name, rhs)),
-            Expr::Get(e, name) => return Ok(Expr::Set(e, name, rhs)),
-            _ => (),
-        }
-    }
-
-    Err(ParserError::new("invalid LHS in assignment", line))
-}
-
-/// Flattens a comma expression tree into an expression list.
-fn try_into_args(expr: Expr) -> Result<Vec<Expr>> {
-    match expr {
-        Expr::Binary(lhs, Token::Comma(_), rhs) => {
-            if lhs.is_comma() {
-                let mut args = try_into_args(*lhs)?;
-                args.push(*rhs);
-                Ok(args)
-            } else {
-                Ok(vec![*lhs, *rhs])
-            }
-        }
-        e => Ok(vec![e]),
-    }
-}
-
-#[derive(Debug)]
-struct Scope {
-    defs: HashMap<String, bool>,
-}
-
-impl Scope {
-    fn new() -> Self {
-        let defs = HashMap::new();
-        Self { defs }
-    }
-
-    fn is_declared(&self, id: &str) -> bool {
-        self.defs.contains_key(id)
-    }
-
-    fn declare(&mut self, id: String) {
-        self.defs.insert(id, false);
-    }
-
-    fn define(&mut self, id: String) {
-        self.defs.insert(id, true);
-    }
-}
-
-type Result<T> = core::result::Result<T, ParserError>;
 
 #[derive(Debug)]
 pub struct Parser {
     tokens: Vec<Token>,
     scopes: Vec<Scope>,
     within_function: bool,
+    current_class: ClassType,
 }
 
 impl Parser {
@@ -90,10 +39,13 @@ impl Parser {
         let mut s = Lexer::new(input.to_string());
         let tokens = s.lex_tokens();
         let scopes = vec![];
+        let current_class = ClassType::None;
+
         Self {
             tokens,
             scopes,
             within_function: false,
+            current_class,
         }
     }
 
@@ -128,6 +80,9 @@ impl Parser {
         // consume class token
         self.next();
 
+        let enclosing_class = self.current_class.clone();
+        self.current_class = ClassType::Class;
+
         let class_name = self.parse_identifier()?;
         self.declare_and_define(&class_name)?;
 
@@ -154,6 +109,8 @@ impl Parser {
 
         self.expect_right_brace("after class body")?;
         self.exit_scope();
+
+        self.current_class = enclosing_class;
 
         Ok(Stmt::Class(class_name, methods))
     }
@@ -431,7 +388,13 @@ impl Parser {
                     op.line(),
                 )
             }
-            Token::This(line) => Ok(Expr::This(Token::This(line))),
+            Token::This(line) => {
+                if matches!(self.current_class, ClassType::None) {
+                    return error("can't use \"this\" outside of a class", line);
+                } else {
+                    Ok(Expr::This(Token::This(line)))
+                }
+            }
             Token::Number(_, number) => Ok(Expr::Number(number)),
             Token::String(_, string) => Ok(Expr::Str(string)),
             Token::True(_) => Ok(Expr::Bool(true)),
@@ -668,6 +631,64 @@ impl Parser {
         }
 
         None
+    }
+}
+
+#[derive(Debug)]
+struct Scope {
+    defs: HashMap<String, bool>,
+}
+
+impl Scope {
+    fn new() -> Self {
+        let defs = HashMap::new();
+        Self { defs }
+    }
+
+    fn is_declared(&self, id: &str) -> bool {
+        self.defs.contains_key(id)
+    }
+
+    fn declare(&mut self, id: String) {
+        self.defs.insert(id, false);
+    }
+
+    fn define(&mut self, id: String) {
+        self.defs.insert(id, true);
+    }
+}
+
+#[derive(Debug, Clone)]
+enum ClassType {
+    None,
+    Class,
+}
+
+fn try_into_assign(expr: Expr, line: Line) -> Result<Expr> {
+    if let Expr::Binary(lhs, Token::Equal(_), rhs) = expr {
+        match *lhs {
+            Expr::Var(name, _) => return Ok(Expr::Assign(name, rhs)),
+            Expr::Get(e, name) => return Ok(Expr::Set(e, name, rhs)),
+            _ => (),
+        }
+    }
+
+    Err(ParserError::new("invalid LHS in assignment", line))
+}
+
+/// Flattens a comma expression tree into an expression list.
+fn try_into_args(expr: Expr) -> Result<Vec<Expr>> {
+    match expr {
+        Expr::Binary(lhs, Token::Comma(_), rhs) => {
+            if lhs.is_comma() {
+                let mut args = try_into_args(*lhs)?;
+                args.push(*rhs);
+                Ok(args)
+            } else {
+                Ok(vec![*lhs, *rhs])
+            }
+        }
+        e => Ok(vec![e]),
     }
 }
 

@@ -335,3 +335,18 @@ fn test_fibonacci() {
 
     assert_eq!("(var a 0) (var temp nil) (block (var b 1) (while (< a 10) (block (print a) (= temp a) (= a b) (= b (+ temp b)))))", sexp(script));
 }
+
+#[test]
+fn test_this_is_only_valid_in_methods() {
+    let script = r#"
+    print this;
+    "#;
+    assert!(parse(script).is_err());
+
+    let script = r#"
+    fun notAMethod() {
+        print this;
+    }
+    "#;
+    assert!(parse(script).is_err());
+}
