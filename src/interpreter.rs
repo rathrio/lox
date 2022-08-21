@@ -71,6 +71,7 @@ pub struct Function {
     params: Vec<Token>,
     stmts: Vec<Stmt>,
     closure: ShareableEnv,
+    is_initializer: bool,
 }
 
 impl Function {
@@ -79,16 +80,23 @@ impl Function {
         params: Vec<Token>,
         stmts: Vec<Stmt>,
         closure: ShareableEnv,
+        is_initializer: bool,
     ) -> Self {
         Self {
             name: name.into(),
             params,
             stmts,
             closure,
+            is_initializer,
         }
     }
 
-    fn call(&self, i: &mut Interpreter<impl Write>, args: &mut Vec<Value>) -> Result<Value> {
+    fn call(
+        &self,
+        i: &mut Interpreter<impl Write>,
+        args: &mut Vec<Value>,
+        line: Line,
+    ) -> Result<Value> {
         let mut local_env = Env::new(Some(self.closure.clone()));
 
         for param in self.params.iter() {
@@ -98,7 +106,16 @@ impl Function {
 
         match i.interpret_stmts(&self.stmts, Rc::new(RefCell::new(local_env)))? {
             ControlFlow::Return(v) => Ok(v),
-            _ => Ok(Value::Nil),
+            _ => {
+                if self.is_initializer {
+                    self.closure
+                        .borrow()
+                        .get_at_depth("this".to_string(), 0)
+                        .map_err(|msg| RuntimeError::new(msg, line))
+                } else {
+                    Ok(Value::Nil)
+                }
+            }
         }
     }
 }
@@ -130,7 +147,7 @@ impl Value {
         line: Line,
     ) -> Result<Value> {
         match self {
-            Value::Fun(fun) => fun.call(i, &mut args),
+            Value::Fun(fun) => fun.call(i, &mut args, line),
             Value::Class(class) => {
                 let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
                 if let Some(init) = class.method(INITIALIZER_NAME) {
@@ -175,6 +192,7 @@ impl Value {
                 fun.params.to_vec(),
                 fun.stmts.to_vec(),
                 Rc::new(RefCell::new(env)),
+                fun.is_initializer,
             );
 
             return Value::Fun(bound_fun);
@@ -450,7 +468,7 @@ impl<Out: Write> Interpreter<Out> {
         body: &[Stmt],
         env: ShareableEnv,
     ) -> Result<Value> {
-        let fun = Function::new("<anon fn>", params.to_vec(), body.to_vec(), env);
+        let fun = Function::new("<anon fn>", params.to_vec(), body.to_vec(), env, false);
         Ok(Value::Fun(fun))
     }
 
@@ -636,7 +654,13 @@ impl<Out: Write> Interpreter<Out> {
         env: ShareableEnv,
     ) -> Result<ControlFlow> {
         let name = name.to_string();
-        let fun = Function::new(name.clone(), params.to_vec(), stmts.to_vec(), env.clone());
+        let fun = Function::new(
+            name.clone(),
+            params.to_vec(),
+            stmts.to_vec(),
+            env.clone(),
+            false,
+        );
         env.borrow_mut().define(name, Value::Fun(fun));
         Ok(ControlFlow::Continue)
     }
@@ -658,6 +682,7 @@ impl<Out: Write> Interpreter<Out> {
                     params.to_vec(),
                     body.to_vec(),
                     env.clone(),
+                    name.to_string() == INITIALIZER_NAME,
                 );
 
                 methods_map.insert(fun.name.clone(), Value::Fun(fun));

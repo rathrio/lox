@@ -556,3 +556,21 @@ fn test_init() {
     interpret(script, &mut out).unwrap();
     assert_outputted(out, "\"Fido\"".into());
 }
+
+#[test]
+fn test_return_in_init() {
+    let mut out = Vec::new();
+    let script = r#"
+    class Foo {
+        init() {
+          print this;
+        }
+    }
+
+    var foo = Foo();
+    print foo.init();
+    "#;
+
+    interpret(script, &mut out).unwrap();
+    assert_outputted(out, "Foo instance\nFoo instance\nFoo instance".into());
+}
