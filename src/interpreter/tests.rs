@@ -494,5 +494,25 @@ fn test_method() {
     "#;
 
     interpret(script, &mut out).unwrap();
-    assert_outputted(out, "Crunch crunch crunch!".into());
+    assert_outputted(out, "\"Crunch crunch crunch!\"".into());
+}
+
+#[test]
+fn test_this() {
+    let mut out = Vec::new();
+    let script = r#"
+    class Cake {
+        taste() {
+          var adjective = "delicious";
+          print "The " + this.flavor + " cake is " + adjective + "!";
+        }
+    }
+
+    var cake = Cake();
+    cake.flavor = "German chocolate";
+    cake.taste();
+    "#;
+
+    interpret(script, &mut out).unwrap();
+    assert_outputted(out, "\"The German chocolate cake is delicious!\"".into());
 }

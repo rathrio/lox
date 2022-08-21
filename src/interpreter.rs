@@ -23,12 +23,12 @@ impl Class {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Instance {
-    class: Rc<RefCell<Class>>,
+    class: Rc<Class>,
     fields: HashMap<String, Value>,
 }
 
 impl Instance {
-    fn new(class: Rc<RefCell<Class>>) -> Self {
+    fn new(class: Rc<Class>) -> Self {
         let fields = HashMap::new();
         Self { class, fields }
     }
@@ -38,11 +38,11 @@ impl Instance {
     }
 
     fn get(&self, name: &str) -> Option<&Value> {
-        self.fields.get(name)
+        self.fields.get(name).or_else(|| self.class.method(name))
     }
 
     fn class_name(&self) -> String {
-        self.class.borrow_mut().name.clone()
+        self.class.name.clone()
     }
 }
 
@@ -90,8 +90,7 @@ pub enum Value {
     Str(String),
     Bool(bool),
     Fun(Function),
-    // AnonFun(Vec<Token>, Vec<Stmt>, ShareableEnv),
-    Class(Rc<RefCell<Class>>),
+    Class(Rc<Class>),
     Instance(Rc<RefCell<Instance>>),
     Nil,
 }
@@ -151,7 +150,7 @@ impl Display for Value {
             Value::Bool(b) => b.fmt(f),
             Value::Nil => write!(f, "nil"),
             Value::Fun(fun) => write!(f, "<fn {}>", fun.name),
-            Value::Class(class) => write!(f, "{}", class.borrow_mut().name),
+            Value::Class(class) => write!(f, "{}", class.name),
             Value::Instance(instance) => {
                 write!(f, "{} instance", instance.borrow_mut().class_name())
             }
@@ -622,10 +621,7 @@ impl<Out: Write> Interpreter<Out> {
             }
         }
 
-        let class = Value::Class(Rc::new(RefCell::new(Class::new(
-            class_name.clone(),
-            methods_map,
-        ))));
+        let class = Value::Class(Rc::new(Class::new(class_name.clone(), methods_map)));
 
         env.borrow_mut()
             .assign(class_name.clone(), class)

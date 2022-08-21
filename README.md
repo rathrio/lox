@@ -2,8 +2,6 @@
 
 ## Todo
 
-- [ ] Avoid cloning class when creating instance
-
 ## Resources
 
 The book:
