@@ -30,7 +30,7 @@ fn error<T>(report: impl Into<String>, line: Line) -> Result<T> {
 pub struct Parser {
     tokens: Vec<Token>,
     scopes: Vec<Scope>,
-    within_function: bool,
+    current_fun: FunType,
     current_class: ClassType,
 }
 
@@ -40,11 +40,12 @@ impl Parser {
         let tokens = s.lex_tokens();
         let scopes = vec![];
         let current_class = ClassType::None;
+        let current_fun = FunType::None;
 
         Self {
             tokens,
             scopes,
-            within_function: false,
+            current_fun,
             current_class,
         }
     }
@@ -94,7 +95,7 @@ impl Parser {
         loop {
             match self.peek() {
                 Token::RightBrace(_) => break,
-                Token::Identifier(_, _) => methods.push(self.parse_fun()?),
+                Token::Identifier(_, _) => methods.push(self.parse_fun(FunType::Method)?),
                 t => {
                     return error(
                         format!(
@@ -143,10 +144,10 @@ impl Parser {
     fn parse_fun_decl(&mut self) -> Result<Stmt> {
         // consume fun token
         self.next();
-        self.parse_fun()
+        self.parse_fun(FunType::Function)
     }
 
-    fn parse_fun(&mut self) -> Result<Stmt> {
+    fn parse_fun(&mut self, fun_type: FunType) -> Result<Stmt> {
         if let Token::LeftParen(line) = self.peek() {
             return error(
                 "anonymous functions cannot be declared in this context",
@@ -157,6 +158,12 @@ impl Parser {
         let name = self.parse_identifier()?;
         self.declare_and_define(&name)?;
 
+        self.current_fun = if matches!(fun_type, FunType::Method) && name.to_string() == "init" {
+            FunType::Initializer
+        } else {
+            fun_type
+        };
+
         let params = self.parse_fun_params(name.line())?;
         let stmts = self.parse_fun_body(&params)?;
 
@@ -164,9 +171,6 @@ impl Parser {
     }
 
     fn parse_fun_body(&mut self, defs: &[Token]) -> Result<Vec<Stmt>> {
-        let prev_within_function = self.within_function;
-        self.within_function = true;
-
         let body = match self.peek() {
             Token::LeftBrace(_) => self.parse_block(false, defs)?,
             t => return error("expected { before function body", t.line()),
@@ -176,7 +180,6 @@ impl Parser {
             _ => unreachable!(),
         };
 
-        self.within_function = prev_within_function;
         Ok(stmts)
     }
 
@@ -231,14 +234,19 @@ impl Parser {
     fn parse_return(&mut self) -> Result<Stmt> {
         let ret = self.next();
 
-        if !self.within_function {
-            return error("cannot return from top level code", ret.line());
+        if matches!(self.current_fun, FunType::None) {
+            return error("can't return from top level code", ret.line());
         }
 
         let expr = match self.peek() {
             Token::Semicolon(_) => Expr::Nil,
             _ => self.parse_expr(0)?,
         };
+
+        if matches!(self.current_fun, FunType::Initializer) && !matches!(expr, Expr::Nil) {
+            return error("can't return a value from an initializer", ret.line());
+        }
+
         self.expect_semi("after return statement")?;
         Ok(Stmt::Return(ret, expr))
     }
@@ -501,8 +509,11 @@ impl Parser {
     }
 
     fn parse_anon_fn(&mut self, line: Line) -> Result<Expr> {
+        let enclosing_fun = self.current_fun.clone();
+        self.current_fun = FunType::Function;
         let params = self.parse_fun_params(line)?;
         let body = self.parse_fun_body(&params)?;
+        self.current_fun = enclosing_fun;
         Ok(Expr::AnonFunDecl(params, body))
     }
 
@@ -662,6 +673,14 @@ impl Scope {
 enum ClassType {
     None,
     Class,
+}
+
+#[derive(Debug, Clone)]
+enum FunType {
+    None,
+    Function,
+    Method,
+    Initializer,
 }
 
 fn try_into_assign(expr: Expr, line: Line) -> Result<Expr> {

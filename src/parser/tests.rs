@@ -350,3 +350,24 @@ fn test_this_is_only_valid_in_methods() {
     "#;
     assert!(parse(script).is_err());
 }
+
+#[test]
+fn test_returning_value_from_init_is_invalid() {
+    let script = r#"
+    class Foo {
+        init() {
+            return "something else";
+        }
+    }
+    "#;
+    assert!(parse(script).is_err());
+
+    let script = r#"
+    class Foo {
+        init() {
+            return;
+        }
+    }
+    "#;
+    assert!(parse(script).is_ok());
+}

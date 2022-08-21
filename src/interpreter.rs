@@ -91,6 +91,13 @@ impl Function {
         }
     }
 
+    fn get_this(&self, line: Line) -> Result<Value> {
+        self.closure
+            .borrow()
+            .get_at_depth("this".to_string(), 0)
+            .map_err(|msg| RuntimeError::new(msg, line))
+    }
+
     fn call(
         &self,
         i: &mut Interpreter<impl Write>,
@@ -105,13 +112,16 @@ impl Function {
         }
 
         match i.interpret_stmts(&self.stmts, Rc::new(RefCell::new(local_env)))? {
-            ControlFlow::Return(v) => Ok(v),
+            ControlFlow::Return(v) => {
+                if self.is_initializer {
+                    self.get_this(line)
+                } else {
+                    Ok(v)
+                }
+            }
             _ => {
                 if self.is_initializer {
-                    self.closure
-                        .borrow()
-                        .get_at_depth("this".to_string(), 0)
-                        .map_err(|msg| RuntimeError::new(msg, line))
+                    self.get_this(line)
                 } else {
                     Ok(Value::Nil)
                 }
