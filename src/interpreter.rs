@@ -27,6 +27,20 @@ pub struct Instance {
     fields: HashMap<String, Value>,
 }
 
+fn get_property(instance: Rc<RefCell<Instance>>, prop: &str) -> Option<Value> {
+    let v = instance.borrow_mut().fields.get(prop).cloned();
+
+    if v.is_some() {
+        return v;
+    }
+
+    instance
+        .borrow_mut()
+        .class
+        .method(prop)
+        .map(|method| method.bind(instance.clone()))
+}
+
 impl Instance {
     fn new(class: Rc<Class>) -> Self {
         let fields = HashMap::new();
@@ -35,10 +49,6 @@ impl Instance {
 
     fn set(&mut self, name: String, value: Value) {
         self.fields.insert(name, value);
-    }
-
-    fn get(&self, name: &str) -> Option<&Value> {
-        self.fields.get(name).or_else(|| self.class.method(name))
     }
 
     fn class_name(&self) -> String {
@@ -139,6 +149,24 @@ impl Value {
 
     fn is_falsey(&self) -> bool {
         !self.is_truthy()
+    }
+
+    fn bind(&self, this: Rc<RefCell<Instance>>) -> Self {
+        if let Value::Fun(fun) = self {
+            let mut env = Env::new(Some(fun.closure.clone()));
+            env.define("this".to_string(), Value::Instance(this));
+
+            let bound_fun = Function::new(
+                fun.name.clone(),
+                fun.params.to_vec(),
+                fun.stmts.to_vec(),
+                Rc::new(RefCell::new(env)),
+            );
+
+            return Value::Fun(bound_fun);
+        }
+
+        panic!("attempted to bind this to {:?}", self);
     }
 }
 
@@ -371,13 +399,14 @@ impl<Out: Write> Interpreter<Out> {
             Expr::AnonFunDecl(params, body) => self.interpret_anon_fun_decl(params, body, env),
             Expr::Get(object, name) => self.interpret_get(object, name, env),
             Expr::Set(object, name, value) => self.interpret_set(object, name, value, env),
+            Expr::This(token) => self.interpret_var(token, Some(0), env),
         }
     }
 
     fn interpret_get(&mut self, object: &Expr, name: &Token, env: ShareableEnv) -> Result<Value> {
         match self.interpret_expr(object, env)? {
-            Value::Instance(instance) => match instance.borrow_mut().get(&name.to_string()) {
-                Some(v) => Ok(v.clone()),
+            Value::Instance(instance) => match get_property(instance, &name.to_string()) {
+                Some(v) => Ok(v),
                 None => error(format!("undefined property {}", name), name.line()),
             },
             _ => error("only instances have properties", name.line()),

@@ -132,15 +132,14 @@ impl Parser {
         self.declare_and_define(&class_name)?;
 
         self.expect_left_brace("before class body")?;
+        self.enter_scope();
+        self.declare_and_define(&Token::This(class_name.line()))?;
 
         let mut methods = Vec::new();
         loop {
             match self.peek() {
                 Token::RightBrace(_) => break,
-                Token::Identifier(_, _) => {
-                    let fun = self.parse_fun()?;
-                    methods.push(fun);
-                }
+                Token::Identifier(_, _) => methods.push(self.parse_fun()?),
                 t => {
                     return error(
                         format!(
@@ -154,6 +153,7 @@ impl Parser {
         }
 
         self.expect_right_brace("after class body")?;
+        self.exit_scope();
 
         Ok(Stmt::Class(class_name, methods))
     }
@@ -431,6 +431,7 @@ impl Parser {
                     op.line(),
                 )
             }
+            Token::This(line) => Ok(Expr::This(Token::This(line))),
             Token::Number(_, number) => Ok(Expr::Number(number)),
             Token::String(_, string) => Ok(Expr::Str(string)),
             Token::True(_) => Ok(Expr::Bool(true)),

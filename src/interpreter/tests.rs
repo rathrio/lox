@@ -516,3 +516,25 @@ fn test_this() {
     interpret(script, &mut out).unwrap();
     assert_outputted(out, "\"The German chocolate cake is delicious!\"".into());
 }
+
+#[test]
+fn test_this_in_callback() {
+    let mut out = Vec::new();
+    let script = r#"
+    class Thing {
+        getCallback() {
+          fun localFunction() {
+            print this;
+          }
+
+          return localFunction;
+        }
+    }
+
+    var callback = Thing().getCallback();
+    callback();
+    "#;
+
+    interpret(script, &mut out).unwrap();
+    assert_outputted(out, "Thing instance".into());
+}

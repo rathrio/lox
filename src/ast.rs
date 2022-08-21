@@ -30,6 +30,7 @@ pub enum Expr {
     Binary(Box<Expr>, Token, Box<Expr>),
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
     Var(Token, Option<u8>),
+    This(Token),
     Assign(Token, Box<Expr>),
     Call(Box<Expr>, Token, Vec<Expr>),
     Get(Box<Expr>, Token),
@@ -77,6 +78,7 @@ pub fn sexp_expr(e: &Expr) -> String {
         Expr::Set(object, name, value) => {
             format!("(.= {} {} {})", sexp_expr(object), name, sexp_expr(value))
         }
+        Expr::This(token) => token.to_string(),
     }
 }
 
@@ -172,6 +174,7 @@ fn rpn(e: &Expr) -> String {
         Expr::AnonFunDecl(params, body) => "unsupported".to_string(),
         Expr::Get(object, name) => format!("{} {} .", rpn(object), name),
         Expr::Set(object, name, value) => format!("{} {} {} .=", rpn(object), name, rpn(value)),
+        Expr::This(token) => token.to_string(),
     }
 }
 
