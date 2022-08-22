@@ -591,3 +591,22 @@ fn test_class_methods() {
     interpret(script, &mut out).unwrap();
     assert_outputted(out, "9".into());
 }
+
+#[test]
+fn test_inheritance() {
+    let mut out = Vec::new();
+    let script = r#"
+    class Doughnut {
+        cook() {
+          print "Fry until golden brown.";
+        }
+    }
+
+    class BostonCream < Doughnut {}
+
+    BostonCream().cook();
+   "#;
+
+    interpret(script, &mut out).unwrap();
+    assert_outputted(out, "\"Fry until golden brown.\"".into());
+}

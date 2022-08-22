@@ -387,3 +387,21 @@ fn test_class_methods() {
         sexp(script)
     );
 }
+
+#[test]
+fn test_inheritance() {
+    let script = r#"
+    class Doughnut {
+        // General doughnut stuff...
+    }
+
+    class BostonCream < Doughnut {
+      // Boston Cream-specific stuff...
+    }
+    "#;
+
+    assert_eq!(
+        "(class Doughnut () ()) (class BostonCream (Doughnut) () ())",
+        sexp(script)
+    );
+}
