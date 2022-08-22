@@ -574,3 +574,20 @@ fn test_return_in_init() {
     interpret(script, &mut out).unwrap();
     assert_outputted(out, "Foo instance\nFoo instance\nFoo instance".into());
 }
+
+#[test]
+fn test_class_methods() {
+    let mut out = Vec::new();
+    let script = r#"
+    class Math {
+      class square(n) {
+        return n * n;
+      }
+    }
+
+    print Math.square(3);
+    "#;
+
+    interpret(script, &mut out).unwrap();
+    assert_outputted(out, "9".into());
+}

@@ -15,7 +15,7 @@ pub enum Stmt {
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
     Return(Token, Expr),
-    Class(Token, Vec<Stmt>),
+    Class(Token, Vec<Stmt>, Vec<Stmt>),
     Break,
 }
 
@@ -69,11 +69,9 @@ pub fn sexp_expr(e: &Expr) -> String {
                 .collect::<Vec<String>>()
                 .join(" ")
         ),
-        Expr::AnonFunDecl(params, body) => format!(
-            "(fun ({}) ({}))",
-            sexp_fun_params(params),
-            sexp_fun_body(body)
-        ),
+        Expr::AnonFunDecl(params, body) => {
+            format!("(fun ({}) ({}))", sexp_fun_params(params), sexp_stmts(body))
+        }
         Expr::Get(object, name) => format!("(. {} {})", sexp_expr(object), name),
         Expr::Set(object, name, value) => {
             format!("(.= {} {} {})", sexp_expr(object), name, sexp_expr(value))
@@ -113,20 +111,22 @@ pub fn sexp_stmt(s: &Stmt) -> String {
                 "(fun {} ({}) ({}))",
                 name,
                 sexp_fun_params(params),
-                sexp_fun_body(body)
+                sexp_stmts(body)
             )
         }
         Stmt::Return(_, expr) => format!("(return {})", sexp_expr(expr)),
-        Stmt::Class(name, methods) => format!(
-            "(class {} ({}))",
+        Stmt::Class(name, methods, class_methods) => format!(
+            "(class {} ({}) ({}))",
             name,
-            methods.iter().map(sexp_stmt).collect::<Vec<_>>().join(" ")
+            sexp_stmts(class_methods),
+            sexp_stmts(methods),
         ),
     }
 }
 
-fn sexp_fun_body(body: &[Stmt]) -> String {
-    body.iter()
+fn sexp_stmts(stmts: &[Stmt]) -> String {
+    stmts
+        .iter()
         .map(sexp_stmt)
         .collect::<Vec<String>>()
         .join(" ")

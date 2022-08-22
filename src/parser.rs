@@ -92,10 +92,15 @@ impl Parser {
         self.declare_and_define(&Token::This(class_name.line()))?;
 
         let mut methods = Vec::new();
+        let mut class_methods = Vec::new();
         loop {
             match self.peek() {
                 Token::RightBrace(_) => break,
                 Token::Identifier(_, _) => methods.push(self.parse_fun(FunType::Method)?),
+                Token::Class(_) => {
+                    self.next();
+                    class_methods.push(self.parse_fun(FunType::Function)?)
+                }
                 t => {
                     return error(
                         format!(
@@ -113,7 +118,7 @@ impl Parser {
 
         self.current_class = enclosing_class;
 
-        Ok(Stmt::Class(class_name, methods))
+        Ok(Stmt::Class(class_name, methods, class_methods))
     }
 
     fn parse_var_decl(&mut self) -> Result<Stmt> {
@@ -430,7 +435,7 @@ impl Parser {
         loop {
             let op = match self.peek() {
                 t if t.is_infix_op() => t,
-                // Not super fond if this approach here. I'm looking at what
+                // Not super fond of this approach here. I'm looking at what
                 // could be potential expression ends and break out.
                 Token::Eof(_)
                 | Token::RightParen(_)

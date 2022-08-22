@@ -5,17 +5,26 @@ use crate::{
     lexer::{Line, Token},
 };
 
+const INITIALIZER_NAME: &str = "init";
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     name: String,
     methods: HashMap<String, Value>,
+    class_methods: HashMap<String, Value>,
 }
 
-const INITIALIZER_NAME: &str = "init";
-
 impl Class {
-    fn new(name: String, methods: HashMap<String, Value>) -> Self {
-        Self { name, methods }
+    fn new(
+        name: String,
+        methods: HashMap<String, Value>,
+        class_methods: HashMap<String, Value>,
+    ) -> Self {
+        Self {
+            name,
+            methods,
+            class_methods,
+        }
     }
 
     fn method(&self, name: &str) -> Option<&Value> {
@@ -28,6 +37,10 @@ impl Class {
             None => 0,
         }
     }
+
+    fn class_method(&self, name: &str) -> Option<&Value> {
+        self.class_methods.get(name)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,24 +49,24 @@ pub struct Instance {
     fields: HashMap<String, Value>,
 }
 
-fn get_property(instance: Rc<RefCell<Instance>>, prop: &str) -> Option<Value> {
-    let v = instance.borrow_mut().fields.get(prop).cloned();
-
-    if v.is_some() {
-        return v;
-    }
-
-    instance
-        .borrow_mut()
-        .class
-        .method(prop)
-        .map(|method| method.bind(instance.clone()))
-}
-
 impl Instance {
     fn new(class: Rc<Class>) -> Self {
         let fields = HashMap::new();
         Self { class, fields }
+    }
+
+    fn get_property(instance: Rc<RefCell<Instance>>, prop: &str) -> Option<Value> {
+        let v = instance.borrow_mut().fields.get(prop).cloned();
+
+        if v.is_some() {
+            return v;
+        }
+
+        instance
+            .borrow_mut()
+            .class
+            .method(prop)
+            .map(|method| method.bind(instance.clone()))
     }
 
     fn set(&mut self, name: String, value: Value) {
@@ -357,7 +370,9 @@ impl<Out: Write> Interpreter<Out> {
             Stmt::Break => Ok(ControlFlow::Break),
             Stmt::FunDecl(name, params, stmts) => self.interpret_fun_decl(name, params, stmts, env),
             Stmt::Return(_, expr) => self.interpret_return(expr, env),
-            Stmt::Class(name, methods) => self.interpret_class_decl(name, methods, env),
+            Stmt::Class(name, methods, class_methods) => {
+                self.interpret_class_decl(name, methods, class_methods, env)
+            }
         }
     }
 
@@ -447,9 +462,15 @@ impl<Out: Write> Interpreter<Out> {
 
     fn interpret_get(&mut self, object: &Expr, name: &Token, env: ShareableEnv) -> Result<Value> {
         match self.interpret_expr(object, env)? {
-            Value::Instance(instance) => match get_property(instance, &name.to_string()) {
-                Some(v) => Ok(v),
-                None => error(format!("undefined property {}", name), name.line()),
+            Value::Instance(instance) => {
+                match Instance::get_property(instance, &name.to_string()) {
+                    Some(v) => Ok(v),
+                    None => error(format!("undefined property {}", name), name.line()),
+                }
+            }
+            Value::Class(class) => match class.class_method(&name.to_string()) {
+                Some(v) => Ok(v.clone()),
+                None => error(format!("undefined class method {}", name), name.line()),
             },
             _ => error("only instances have properties", name.line()),
         }
@@ -679,6 +700,7 @@ impl<Out: Write> Interpreter<Out> {
         &self,
         name: &Token,
         methods: &[Stmt],
+        class_methods: &[Stmt],
         env: ShareableEnv,
     ) -> Result<ControlFlow> {
         let class_name = name.to_string();
@@ -699,7 +721,26 @@ impl<Out: Write> Interpreter<Out> {
             }
         }
 
-        let class = Value::Class(Rc::new(Class::new(class_name.clone(), methods_map)));
+        let mut class_methods_map = HashMap::new();
+        for method in class_methods {
+            if let Stmt::FunDecl(name, params, body) = method {
+                let fun = Function::new(
+                    name.to_string(),
+                    params.to_vec(),
+                    body.to_vec(),
+                    env.clone(),
+                    false,
+                );
+
+                class_methods_map.insert(fun.name.clone(), Value::Fun(fun));
+            }
+        }
+
+        let class = Value::Class(Rc::new(Class::new(
+            class_name.clone(),
+            methods_map,
+            class_methods_map,
+        )));
 
         env.borrow_mut()
             .assign(class_name.clone(), class)

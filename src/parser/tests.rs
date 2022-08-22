@@ -279,7 +279,7 @@ fn test_nested_return() {
 
 #[test]
 fn test_classes() {
-    assert_eq!("(class Dog ())", sexp("class Dog {}"));
+    assert_eq!("(class Dog () ())", sexp("class Dog {}"));
 
     let script = r#"
         class Breakfast {
@@ -294,7 +294,7 @@ fn test_classes() {
         "#;
 
     assert_eq!(
-        r#"(class Breakfast ((fun cook () ((print "Eggs a-fryin'!"))) (fun serve (who) ((print (+ (+ "Enjoy your breakfast, " who) "."))))))"#,
+        r#"(class Breakfast () ((fun cook () ((print "Eggs a-fryin'!"))) (fun serve (who) ((print (+ (+ "Enjoy your breakfast, " who) "."))))))"#,
         sexp(script)
     );
 }
@@ -370,4 +370,20 @@ fn test_returning_value_from_init_is_invalid() {
     }
     "#;
     assert!(parse(script).is_ok());
+}
+
+#[test]
+fn test_class_methods() {
+    let script = r#"
+    class Math {
+      class square(n) {
+        return n * n;
+      }
+    }
+    "#;
+
+    assert_eq!(
+        "(class Math ((fun square (n) ((return (* n n))))) ())",
+        sexp(script)
+    );
 }
