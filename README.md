@@ -2,9 +2,26 @@
 
 ## Todo
 
-- [ ] Integrate https://github.com/munificent/craftinginterpreters/tree/master/test
+- [ ] Make it compliant with the jlox test suite
 
-      https://github.com/munificent/craftinginterpreters#testing-your-implementation
+## Running tests
+
+```sh
+cargo test
+```
+
+```sh
+cargo jlox-suite
+
+# whereas ~/scripts/cargo-jlox-suite:
+#!/bin/bash
+
+cargo install --path .
+cd ~/git/craftinginterpreters/
+dart tool/bin/test.dart jlox --interpreter lox
+cd -
+```
+
 
 ## Resources
 
@@ -26,3 +43,7 @@ Pratt Parsing:
 - https://www.youtube.com/watch?v=MnctEW1oL-E&t=4510s
 - https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
 - https://www.oilshell.org/blog/2017/03/31.html
+
+Reference Test Suite:
+
+- https://github.com/munificent/craftinginterpreters#testing-your-implementation

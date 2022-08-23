@@ -204,6 +204,7 @@ impl Value {
             (Value::Str(l), Value::Str(r)) => l == r,
             (Value::Bool(l), Value::Bool(r)) => l == r,
             (Value::Nil, Value::Nil) => true,
+            (Value::Class(left), Value::Class(right)) => *left == *right,
             _ => false,
         }
     }
@@ -344,7 +345,14 @@ pub struct Interpreter<Out: Write> {
 impl<Out: Write> Interpreter<Out> {
     pub fn new(out: Out) -> Self {
         let env = Rc::new(RefCell::new(Env::new(None)));
+        env.borrow_mut()
+            .define("clock".to_string(), Self::build_native_fun_clock());
+
         Self { out, env }
+    }
+
+    fn build_native_fun_clock() -> Value {
+        Value::Nil
     }
 
     pub fn interpret(&mut self, program: &Program) -> Result<ControlFlow> {
@@ -402,8 +410,10 @@ impl<Out: Write> Interpreter<Out> {
         env: ShareableEnv,
     ) -> Result<ControlFlow> {
         while self.interpret_expr(condition, env.clone())?.is_truthy() {
-            if let ControlFlow::Break = self.interpret_stmt(stmt, env.clone())? {
-                break;
+            match self.interpret_stmt(stmt, env.clone())? {
+                ControlFlow::Break => break,
+                ControlFlow::Return(v) => return Ok(ControlFlow::Return(v)),
+                _ => (),
             }
         }
 
