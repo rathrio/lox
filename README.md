@@ -2,6 +2,10 @@
 
 ## Todo
 
+- [ ] Integrate https://github.com/munificent/craftinginterpreters/tree/master/test
+
+      https://github.com/munificent/craftinginterpreters#testing-your-implementation
+
 ## Resources
 
 The book:

@@ -15,7 +15,7 @@ pub enum Stmt {
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>),
     Return(Token, Expr),
-    Class(Token, Vec<Stmt>, Vec<Stmt>),
+    Class(Token, Option<Expr>, Vec<Stmt>, Vec<Stmt>),
     Break,
 }
 
@@ -36,6 +36,7 @@ pub enum Expr {
     Get(Box<Expr>, Token),
     Set(Box<Expr>, Token, Box<Expr>),
     AnonFunDecl(Vec<Token>, Vec<Stmt>),
+    Super(Token, Token, Option<u8>),
 }
 
 impl Expr {
@@ -77,6 +78,7 @@ pub fn sexp_expr(e: &Expr) -> String {
             format!("(.= {} {} {})", sexp_expr(object), name, sexp_expr(value))
         }
         Expr::This(token) => token.to_string(),
+        Expr::Super(_, token, _) => format!("(super {})", token),
     }
 }
 
@@ -115,9 +117,10 @@ pub fn sexp_stmt(s: &Stmt) -> String {
             )
         }
         Stmt::Return(_, expr) => format!("(return {})", sexp_expr(expr)),
-        Stmt::Class(name, methods, class_methods) => format!(
-            "(class {} ({}) ({}))",
+        Stmt::Class(name, superclass, methods, class_methods) => format!(
+            "(class {} ({}) ({}) ({}))",
             name,
+            superclass.as_ref().map(sexp_expr).unwrap_or_default(),
             sexp_stmts(class_methods),
             sexp_stmts(methods),
         ),
@@ -175,6 +178,7 @@ fn rpn(e: &Expr) -> String {
         Expr::Get(object, name) => format!("{} {} .", rpn(object), name),
         Expr::Set(object, name, value) => format!("{} {} {} .=", rpn(object), name, rpn(value)),
         Expr::This(token) => token.to_string(),
+        Expr::Super(_, token, _) => format!("super {}", token),
     }
 }
 

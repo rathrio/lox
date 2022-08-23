@@ -279,7 +279,7 @@ fn test_nested_return() {
 
 #[test]
 fn test_classes() {
-    assert_eq!("(class Dog () ())", sexp("class Dog {}"));
+    assert_eq!("(class Dog () () ())", sexp("class Dog {}"));
 
     let script = r#"
         class Breakfast {
@@ -294,7 +294,7 @@ fn test_classes() {
         "#;
 
     assert_eq!(
-        r#"(class Breakfast () ((fun cook () ((print "Eggs a-fryin'!"))) (fun serve (who) ((print (+ (+ "Enjoy your breakfast, " who) "."))))))"#,
+        r#"(class Breakfast () () ((fun cook () ((print "Eggs a-fryin'!"))) (fun serve (who) ((print (+ (+ "Enjoy your breakfast, " who) "."))))))"#,
         sexp(script)
     );
 }
@@ -383,7 +383,7 @@ fn test_class_methods() {
     "#;
 
     assert_eq!(
-        "(class Math ((fun square (n) ((return (* n n))))) ())",
+        "(class Math () ((fun square (n) ((return (* n n))))) ())",
         sexp(script)
     );
 }
@@ -401,7 +401,25 @@ fn test_inheritance() {
     "#;
 
     assert_eq!(
-        "(class Doughnut () ()) (class BostonCream (Doughnut) () ())",
+        "(class Doughnut () () ()) (class BostonCream (Doughnut) () ())",
         sexp(script)
     );
+
+    let script = "class Oops < Oops {}";
+    assert!(parse(script).is_err());
+}
+
+#[test]
+fn test_invalid_supers() {
+    let script = r#"
+    class Eclair {
+      cook() {
+        super.cook();
+        print "Pipe full of crème pâtissière.";
+      }
+    }
+    "#;
+    assert!(parse(script).is_err());
+
+    assert!(parse_expr("super.notEvenInAClass()").is_err());
 }

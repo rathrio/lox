@@ -155,7 +155,7 @@ fn test_comma() {
 fn test_out() {
     let mut out = Vec::new();
     interpret("print \"Hello\" + \" World!\";", &mut out).unwrap();
-    assert_outputted(out, "\"Hello World!\"".into());
+    assert_outputted(out, "Hello World!".into());
 }
 
 #[test]
@@ -188,7 +188,7 @@ fn test_block_scope() {
         print a;
         "#;
     interpret(script, &mut out).unwrap();
-    assert_outputted(out, "\"inner\"\n\"outer\"".into());
+    assert_outputted(out, "inner\nouter".into());
 }
 
 #[test]
@@ -204,7 +204,7 @@ fn test_block_scope_2() {
         print a;
         "#;
     interpret(script, &mut out).unwrap();
-    assert_outputted(out, "\"inner\"".into());
+    assert_outputted(out, "inner".into());
 }
 
 #[test]
@@ -244,7 +244,7 @@ fn test_if_else() {
             print "ho";
         "#;
     interpret(script, &mut out).unwrap();
-    assert_outputted(out, "\"hey\"".into());
+    assert_outputted(out, "hey".into());
 
     let mut out = Vec::new();
     let script = r#"
@@ -255,7 +255,7 @@ fn test_if_else() {
         }
         "#;
     interpret(script, &mut out).unwrap();
-    assert_outputted(out, "\"chabis\"".into());
+    assert_outputted(out, "chabis".into());
 }
 
 #[test]
@@ -401,7 +401,7 @@ fn test_closure_binding() {
         "#;
 
     interpret(script, &mut out).unwrap();
-    assert_outputted(out, "\"global\"\n\"global\"".into());
+    assert_outputted(out, "global\nglobal".into());
 }
 
 #[test]
@@ -494,7 +494,7 @@ fn test_method() {
     "#;
 
     interpret(script, &mut out).unwrap();
-    assert_outputted(out, "\"Crunch crunch crunch!\"".into());
+    assert_outputted(out, "Crunch crunch crunch!".into());
 }
 
 #[test]
@@ -514,7 +514,7 @@ fn test_this() {
     "#;
 
     interpret(script, &mut out).unwrap();
-    assert_outputted(out, "\"The German chocolate cake is delicious!\"".into());
+    assert_outputted(out, "The German chocolate cake is delicious!".into());
 }
 
 #[test]
@@ -554,7 +554,7 @@ fn test_init() {
     "#;
 
     interpret(script, &mut out).unwrap();
-    assert_outputted(out, "\"Fido\"".into());
+    assert_outputted(out, "Fido".into());
 }
 
 #[test]
@@ -605,8 +605,75 @@ fn test_inheritance() {
     class BostonCream < Doughnut {}
 
     BostonCream().cook();
-   "#;
+    "#;
 
     interpret(script, &mut out).unwrap();
-    assert_outputted(out, "\"Fry until golden brown.\"".into());
+    assert_outputted(out, "Fry until golden brown.".into());
+}
+
+#[test]
+fn test_invalid_inheritance() {
+    let mut out = Vec::new();
+    let script = r#"
+    var NotAClass = "I am totally not a class";
+    class Subclass < NotAClass {} // ?!
+    "#;
+
+    assert!(interpret(script, &mut out).is_err());
+}
+
+#[test]
+fn test_super() {
+    let mut out = Vec::new();
+    let script = r#"
+    class Doughnut {
+      cook() {
+        print "Fry until golden brown.";
+      }
+    }
+
+    class BostonCream < Doughnut {
+      cook() {
+        super.cook();
+        print "Pipe full of custard and coat with chocolate.";
+      }
+    }
+
+    BostonCream().cook();
+    "#;
+
+    interpret(script, &mut out).unwrap();
+    assert_outputted(
+        out,
+        "Fry until golden brown.\nPipe full of custard and coat with chocolate.".into(),
+    );
+}
+
+#[test]
+fn test_super_2() {
+    let mut out = Vec::new();
+    let script = r#"
+    class A {
+      method() {
+        print "A method";
+      }
+    }
+
+    class B < A {
+      method() {
+        print "B method";
+      }
+
+      test() {
+        super.method();
+      }
+    }
+
+    class C < B {}
+
+    C().test();
+    "#;
+
+    interpret(script, &mut out).unwrap();
+    assert_outputted(out, "A method".into());
 }

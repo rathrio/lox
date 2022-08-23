@@ -87,6 +87,24 @@ impl Parser {
         let class_name = self.parse_identifier()?;
         self.declare_and_define(&class_name)?;
 
+        let superclass = match self.peek() {
+            Token::Less(_) => {
+                self.next();
+
+                let superclass_name = self.parse_identifier()?;
+                self.enter_scope();
+                self.declare_and_define(&Token::Super(superclass_name.line()))?;
+
+                if superclass_name.to_string() == class_name.to_string() {
+                    return error("a class can't inherit from itself", superclass_name.line());
+                }
+
+                self.current_class = ClassType::Subclass;
+                Some(Expr::Var(superclass_name, Some(0)))
+            }
+            _ => None,
+        };
+
         self.expect_left_brace("before class body")?;
         self.enter_scope();
         self.declare_and_define(&Token::This(class_name.line()))?;
@@ -116,9 +134,13 @@ impl Parser {
         self.expect_right_brace("after class body")?;
         self.exit_scope();
 
+        if superclass.is_some() {
+            self.exit_scope();
+        }
+
         self.current_class = enclosing_class;
 
-        Ok(Stmt::Class(class_name, methods, class_methods))
+        Ok(Stmt::Class(class_name, superclass, methods, class_methods))
     }
 
     fn parse_var_decl(&mut self) -> Result<Stmt> {
@@ -426,6 +448,7 @@ impl Parser {
                     t => error(format!("expected a \")\", but got \"{}\"", t), t.line()),
                 }
             }
+            Token::Super(line) => self.parse_super(line),
             t => error(
                 format!("invalid start of expression with \"{}\"", t),
                 t.line(),
@@ -475,6 +498,27 @@ impl Parser {
         }
 
         Ok(expr)
+    }
+
+    fn parse_super(&mut self, line: usize) -> Result<Expr> {
+        if matches!(self.current_class, ClassType::None) {
+            return error("can't use \"super\" outside of a class", line);
+        }
+
+        if !matches!(self.current_class, ClassType::Subclass) {
+            return error("can't use \"super\" in a class with no superclass", line);
+        }
+
+        match self.peek() {
+            Token::Dot(_) => {
+                self.next();
+                let method = self.parse_identifier()?;
+                let id = Token::Super(line);
+
+                Ok(Expr::Super(id.clone(), method, self.resolve_depth(&id)))
+            }
+            _ => error("expect a \".\" after super", line),
+        }
     }
 
     fn parse_ternary(&mut self, condition: Expr, r_bp: u8, line: Line) -> Result<Expr> {
@@ -678,6 +722,7 @@ impl Scope {
 enum ClassType {
     None,
     Class,
+    Subclass,
 }
 
 #[derive(Debug, Clone)]

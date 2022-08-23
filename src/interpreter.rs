@@ -10,6 +10,7 @@ const INITIALIZER_NAME: &str = "init";
 #[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     name: String,
+    superclass: Option<Rc<Class>>,
     methods: HashMap<String, Value>,
     class_methods: HashMap<String, Value>,
 }
@@ -17,11 +18,13 @@ pub struct Class {
 impl Class {
     fn new(
         name: String,
+        superclass: Option<Rc<Class>>,
         methods: HashMap<String, Value>,
         class_methods: HashMap<String, Value>,
     ) -> Self {
         Self {
             name,
+            superclass,
             methods,
             class_methods,
         }
@@ -56,17 +59,29 @@ impl Instance {
     }
 
     fn get_property(instance: Rc<RefCell<Instance>>, prop: &str) -> Option<Value> {
-        let v = instance.borrow_mut().fields.get(prop).cloned();
+        let field = instance.borrow_mut().fields.get(prop).cloned();
 
-        if v.is_some() {
-            return v;
+        if field.is_some() {
+            return field;
         }
 
-        instance
-            .borrow_mut()
-            .class
+        let class = &instance.borrow_mut().class;
+
+        let m = class
             .method(prop)
-            .map(|method| method.bind(instance.clone()))
+            .map(|method| method.bind(instance.clone()));
+
+        if m.is_some() {
+            return m;
+        }
+
+        if let Some(superclass) = &class.superclass {
+            return superclass
+                .method(prop)
+                .map(|method| method.bind(instance.clone()));
+        }
+
+        None
     }
 
     fn set(&mut self, name: String, value: Value) {
@@ -229,7 +244,7 @@ impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Number(n) => n.fmt(f),
-            Value::Str(s) => write!(f, "{:?}", s),
+            Value::Str(s) => write!(f, "{}", s),
             Value::Bool(b) => b.fmt(f),
             Value::Nil => write!(f, "nil"),
             Value::Fun(fun) => write!(f, "<fn {}>", fun.name),
@@ -370,8 +385,8 @@ impl<Out: Write> Interpreter<Out> {
             Stmt::Break => Ok(ControlFlow::Break),
             Stmt::FunDecl(name, params, stmts) => self.interpret_fun_decl(name, params, stmts, env),
             Stmt::Return(_, expr) => self.interpret_return(expr, env),
-            Stmt::Class(name, methods, class_methods) => {
-                self.interpret_class_decl(name, methods, class_methods, env)
+            Stmt::Class(name, superclass, methods, class_methods) => {
+                self.interpret_class_decl(name, superclass, methods, class_methods, env)
             }
         }
     }
@@ -457,6 +472,29 @@ impl<Out: Write> Interpreter<Out> {
             Expr::Get(object, name) => self.interpret_get(object, name, env),
             Expr::Set(object, name, value) => self.interpret_set(object, name, value, env),
             Expr::This(token) => self.interpret_var(token, Some(0), env),
+            Expr::Super(_, method, depth) => self.interpret_super(method, *depth, env),
+        }
+    }
+
+    fn interpret_super(
+        &mut self,
+        method: &Token,
+        depth: Option<u8>,
+        env: ShareableEnv,
+    ) -> Result<Value> {
+        let superclass = self.interpret_var(&Token::Super(method.line()), depth, env.clone())?;
+        let object = self.interpret_var(&Token::This(method.line()), depth.map(|d| d - 1), env)?;
+
+        match (superclass, object) {
+            (Value::Class(superclass), Value::Instance(instance)) => superclass
+                .method(&method.to_string())
+                .map(|m| m.bind(instance.clone()))
+                .ok_or(RuntimeError {
+                    report: format!("no superclass method \"{}\" found", method),
+                    line: method.line(),
+                }),
+
+            _ => error("failed to lookup super method", method.line()),
         }
     }
 
@@ -697,14 +735,35 @@ impl<Out: Write> Interpreter<Out> {
     }
 
     fn interpret_class_decl(
-        &self,
+        &mut self,
         name: &Token,
+        superclass_expr: &Option<Expr>,
         methods: &[Stmt],
         class_methods: &[Stmt],
         env: ShareableEnv,
     ) -> Result<ControlFlow> {
         let class_name = name.to_string();
         env.borrow_mut().define(class_name.clone(), Value::Nil);
+
+        let superclass = match superclass_expr {
+            Some(expr) => {
+                let superclass = self.interpret_expr(expr, env.clone())?;
+                match superclass {
+                    Value::Class(class) => Some(class),
+                    _ => return error("superclass must be a class", name.line()),
+                }
+            }
+            None => None,
+        };
+
+        let env = if let Some(ref superclass) = superclass {
+            let e = Rc::new(RefCell::new(Env::new(Some(env))));
+            e.borrow_mut()
+                .define("super".to_string(), Value::Class(superclass.clone()));
+            e
+        } else {
+            env
+        };
 
         let mut methods_map = HashMap::new();
         for method in methods {
@@ -738,9 +797,20 @@ impl<Out: Write> Interpreter<Out> {
 
         let class = Value::Class(Rc::new(Class::new(
             class_name.clone(),
+            superclass,
             methods_map,
             class_methods_map,
         )));
+
+        let env = if let Value::Class(class) = &class {
+            if class.superclass.is_some() {
+                env.borrow_mut().enclosing.as_ref().unwrap().clone()
+            } else {
+                env
+            }
+        } else {
+            env
+        };
 
         env.borrow_mut()
             .assign(class_name.clone(), class)
