@@ -335,22 +335,19 @@ impl Parser {
         };
         self.expect_right_paren("after for condition")?;
 
-        let for_stmt = self.parse_stmt(true)?;
+        let for_body = self.parse_stmt(true)?;
 
-        let while_stmt = if let Some(i) = increment {
+        let while_body = if let Some(i) = increment {
             let increment_stmt = Stmt::Expr(i);
-            match for_stmt {
-                Stmt::Block(mut stmts) => {
-                    stmts.push(increment_stmt);
-                    Stmt::Block(stmts)
-                }
-                _ => Stmt::Block(vec![for_stmt, increment_stmt]),
+            match for_body {
+                Stmt::Block(stmts) => Stmt::Block(vec![Stmt::Block(stmts), increment_stmt]),
+                _ => Stmt::Block(vec![Stmt::Block(vec![for_body]), increment_stmt]),
             }
         } else {
-            for_stmt
+            for_body
         };
 
-        block_stmts.push(Stmt::While(condition, Box::new(while_stmt)));
+        block_stmts.push(Stmt::While(condition, Box::new(while_body)));
         self.exit_scope();
 
         Ok(Stmt::Block(block_stmts))

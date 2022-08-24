@@ -174,7 +174,7 @@ fn test_for() {
             print i;
         "#;
     assert_eq!(
-        "(block (var i 0) (while (< i 10) (block (print i) (= i (+ i 1)))))",
+        "(block (var i 0) (while (< i 10) (block (block (print i)) (= i (+ i 1)))))",
         sexp(script)
     );
 
@@ -318,22 +318,6 @@ fn test_set() {
         "(.= (. (. breakfast omelette) filling) meat ham)",
         sexp_expr("breakfast.omelette.filling.meat = ham")
     );
-}
-
-#[test]
-fn test_fibonacci() {
-    let script = r#"
-    var a = 0;
-    var temp;
-
-    for (var b = 1; a < 10; b = temp + b) {
-        print a;
-        temp = a;
-        a = b;
-    }
-    "#;
-
-    assert_eq!("(var a 0) (var temp nil) (block (var b 1) (while (< a 10) (block (print a) (= temp a) (= a b) (= b (+ temp b)))))", sexp(script));
 }
 
 #[test]
