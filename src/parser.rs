@@ -422,7 +422,7 @@ impl Parser {
             }
             Token::This(line) => {
                 if matches!(self.current_class, ClassType::None) {
-                    return error("can't use \"this\" outside of a class", line);
+                    return error("Can't use 'this' outside of a class.", line);
                 } else {
                     Ok(Expr::This(Token::This(line)))
                 }
@@ -499,11 +499,11 @@ impl Parser {
 
     fn parse_super(&mut self, line: usize) -> Result<Expr> {
         if matches!(self.current_class, ClassType::None) {
-            return error("can't use \"super\" outside of a class", line);
+            return error("Can't use 'super' outside of a class.", line);
         }
 
         if !matches!(self.current_class, ClassType::Subclass) {
-            return error("can't use \"super\" in a class with no superclass", line);
+            return error("Can't use 'super' in a class with no superclass.", line);
         }
 
         match self.peek() {

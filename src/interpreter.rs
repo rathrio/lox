@@ -314,7 +314,7 @@ impl Env {
         } else if let Some(e) = &self.enclosing {
             e.borrow_mut().get(name)
         } else {
-            Err(format!("undefined variable \"{}\"", &name))
+            Err(format!("Undefined variable '{}'.", &name))
         }
     }
 
@@ -325,7 +325,7 @@ impl Env {
         } else if let Some(e) = &self.enclosing {
             e.borrow_mut().assign(name, value)
         } else {
-            Err(format!("undefined variable \"{}\"", &name))
+            Err(format!("Undefined variable '{}'.", &name))
         }
     }
 }
@@ -513,7 +513,7 @@ impl<Out: Write> Interpreter<Out> {
             Value::Instance(instance) => {
                 match Instance::get_property(instance, &name.to_string()) {
                     Some(v) => Ok(v),
-                    None => error(format!("undefined property {}", name), name.line()),
+                    None => error(format!("Undefined property '{}'.", name), name.line()),
                 }
             }
             Value::Class(class) => match class.class_method(&name.to_string()) {
@@ -568,8 +568,7 @@ impl<Out: Write> Interpreter<Out> {
         if arguments.len() != callable.arity(line)? {
             return error(
                 format!(
-                    "{} expected {} arguments, provided {}",
-                    callable,
+                    "Expected {} arguments but got {}.",
                     callable.arity(line)?,
                     arguments.len()
                 ),
@@ -653,19 +652,19 @@ impl<Out: Write> Interpreter<Out> {
             Token::Comma(_) => Ok(right),
             Token::Minus(_) => match (left, right) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l - r)),
-                _ => error("binary \"-\" can only be applied to numbers", op.line()),
+                _ => error("Operands must be numbers.", op.line()),
             },
             Token::Plus(_) => match (left, right) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l + r)),
                 (Value::Str(l), Value::Str(r)) => Ok(Value::Str(format!("{}{}", l, r))),
                 _ => error(
-                    "binary \"+\" can only be applied to numbers and strings",
+                    "Operands must be two numbers or two strings.",
                     op.line(),
                 ),
             },
             Token::Star(_) => match (left, right) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l * r)),
-                _ => error("binary \"*\" can only be applied to numbers", op.line()),
+                _ => error("Operands must be numbers.", op.line()),
             },
             Token::Slash(_) => match (left, right) {
                 (Value::Number(l), Value::Number(r)) => {
@@ -675,25 +674,25 @@ impl<Out: Write> Interpreter<Out> {
                         Ok(Value::Number(l / r))
                     }
                 }
-                _ => error("binary \"/\" can only be applied to numbers", op.line()),
+                _ => error("Operands must be numbers.", op.line()),
             },
             Token::EqualEqual(_) => Ok(Value::Bool(left.equals(&right))),
             Token::BangEqual(_) => Ok(Value::Bool(!left.equals(&right))),
             Token::Greater(_) => match (left, right) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Bool(l > r)),
-                _ => error("binary \">\" can only be applied to numbers", op.line()),
+                _ => error("Operands must be numbers.", op.line()),
             },
             Token::GreaterEqual(_) => match (left, right) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Bool(l >= r)),
-                _ => error("binary \">=\" can only be applied to numbers", op.line()),
+                _ => error("Operands must be numbers.", op.line()),
             },
             Token::Less(_) => match (left, right) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Bool(l < r)),
-                _ => error("binary \"<\" can only be applied to numbers", op.line()),
+                _ => error("Operands must be numbers.", op.line()),
             },
             Token::LessEqual(_) => match (left, right) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Bool(l <= r)),
-                _ => error("binary \"<=\" can only be applied to numbers", op.line()),
+                _ => error("Operands must be numbers.", op.line()),
             },
             _ => error(format!("invalid binary operator \"{}\"", op), op.line()),
         }

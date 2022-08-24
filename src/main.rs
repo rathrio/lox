@@ -39,12 +39,12 @@ fn run_program(script: String, interpreter: &mut Interpreter<io::Stdout>) {
         Ok(program) => match interpreter.interpret(&program) {
             Ok(_) => (),
             Err(error) => {
-                eprintln!("runtime error: {} on line {}", error.report, error.line);
+                eprintln!("{}\n[line {}]", error.report, error.line);
                 std::process::exit(70);
             }
         },
         Err(error) => {
-            eprintln!("syntax error: {} on line {}", error.report, error.line);
+            eprintln!("{}\n[line {}]", error.report, error.line);
             std::process::exit(65);
         }
     };
@@ -54,7 +54,7 @@ fn run_expr(script: String, interpreter: &mut Interpreter<io::Stdout>) {
     match Parser::parse_expr_str(&script) {
         Ok(expr) => match interpreter.interpret_expr(&expr, interpreter.env.clone()) {
             Ok(v) => println!("=> {}", v),
-            Err(error) => println!("runtime error: {}", error.report),
+            Err(error) => println!("{}", error.report),
         },
 
         Err(error) => println!("syntax error: {}", error.report),
