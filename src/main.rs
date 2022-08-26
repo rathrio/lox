@@ -44,7 +44,7 @@ fn run_program(script: String, interpreter: &mut Interpreter<io::Stdout>) {
             }
         },
         Err(error) => {
-            eprintln!("{}\n[line {}]", error.report, error.line);
+            eprintln!("[line {}] {}", error.line, error.report);
             std::process::exit(65);
         }
     };
@@ -65,7 +65,7 @@ fn run_file(path: &str, args: &Args) {
     let script = std::fs::read_to_string(path).unwrap();
 
     if args.tokens {
-        let mut lexer = Lexer::new(script);
+        let mut lexer = Lexer::new(&script);
         println!("{:#?}", lexer.lex_tokens());
         return;
     }

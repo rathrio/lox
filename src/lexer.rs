@@ -204,7 +204,7 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn new(source: String) -> Self {
+    pub fn new(source: &str) -> Self {
         Self {
             source: source.chars().into_iter().collect(),
             tokens: Vec::new(),
@@ -229,7 +229,7 @@ impl Lexer {
 
         match c {
             c if c.is_ascii_digit() => self.digit(),
-            c if c.is_alphanumeric() => self.identifier(),
+            c if c.is_alphabetic() => self.identifier(),
             '(' => self.tokens.push(Token::LeftParen(self.line)),
             ')' => self.tokens.push(Token::RightParen(self.line)),
             '{' => self.tokens.push(Token::LeftBrace(self.line)),
@@ -339,7 +339,7 @@ impl Lexer {
     }
 
     fn identifier(&mut self) {
-        while self.peek().is_alphanumeric() {
+        while is_valid_identifier_char(self.peek()) {
             self.advance();
         }
 
@@ -412,5 +412,27 @@ impl Lexer {
         }
 
         self.source[self.current + 1]
+    }
+}
+
+fn is_valid_identifier_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lex(input: &str) -> Vec<Token> {
+        let mut lexer = Lexer::new(input);
+        lexer.lex_tokens()
+    }
+
+    #[test]
+    fn test_identifier() {
+        assert_eq!(
+            &Token::Identifier(1, "foo_bar".to_string()),
+            lex("foo_bar").get(0).unwrap()
+        );
     }
 }

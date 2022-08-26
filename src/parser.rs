@@ -36,7 +36,7 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(input: &str) -> Self {
-        let mut s = Lexer::new(input.to_string());
+        let mut s = Lexer::new(input);
         let tokens = s.lex_tokens();
         let scopes = vec![];
         let current_class = ClassType::None;
@@ -191,7 +191,7 @@ impl Parser {
             fun_type
         };
 
-        let params = self.parse_fun_params(name.line())?;
+        let params = self.parse_fun_params()?;
         let stmts = self.parse_fun_body(&params)?;
 
         Ok(Stmt::FunDecl(name, params, stmts))
@@ -210,7 +210,7 @@ impl Parser {
         Ok(stmts)
     }
 
-    fn parse_fun_params(&mut self, line: Line) -> Result<Vec<Token>> {
+    fn parse_fun_params(&mut self) -> Result<Vec<Token>> {
         self.expect_left_paren("after function name")?;
         let mut params = Vec::new();
         loop {
@@ -219,8 +219,15 @@ impl Parser {
             }
 
             params.push(self.parse_identifier()?);
-            if params.len() >= 255 {
-                return error("can't have more than 255 parameters", line);
+            if params.len() > 255 {
+                let offending_param = params.last().unwrap();
+                return error(
+                    format!(
+                        "Error at '{}': Can't have more than 255 parameters.",
+                        offending_param
+                    ),
+                    offending_param.line(),
+                );
             }
 
             // Let's allow trailing commas
@@ -262,7 +269,10 @@ impl Parser {
         let ret = self.next();
 
         if matches!(self.current_fun, FunType::None) {
-            return error("can't return from top level code", ret.line());
+            return error(
+                "Error at 'return': Can't return from top level code.",
+                ret.line(),
+            );
         }
 
         let expr = match self.peek() {
@@ -271,7 +281,10 @@ impl Parser {
         };
 
         if matches!(self.current_fun, FunType::Initializer) && !matches!(expr, Expr::Nil) {
-            return error("can't return a value from an initializer", ret.line());
+            return error(
+                "Error at 'return': Can't return a value from an initializer.",
+                ret.line(),
+            );
         }
 
         self.expect_semi("after return statement")?;
@@ -436,7 +449,7 @@ impl Parser {
                 let id = Token::Identifier(line, name);
                 Ok(Expr::Var(id.clone(), self.resolve_depth(&id)))
             }
-            Token::Fun(line) => self.parse_anon_fn(line),
+            Token::Fun(_) => self.parse_anon_fn(),
             Token::LeftParen(_) => {
                 let lhs = self.parse_expr(0)?;
 
@@ -446,10 +459,7 @@ impl Parser {
                 }
             }
             Token::Super(line) => self.parse_super(line),
-            t => error(
-                format!("invalid start of expression with \"{}\"", t),
-                t.line(),
-            ),
+            t => error(format!("Error at '{}': Expect expression.", t), t.line()),
         }?;
 
         loop {
@@ -540,8 +550,8 @@ impl Parser {
             try_into_args(self.parse_expr(0)?)?
         };
 
-        if args.len() >= 255 {
-            return error("can't have more than 255 arguments", line);
+        if args.len() > 255 {
+            return error("Can't have more than 255 arguments.".to_string(), line);
         }
 
         self.expect_right_paren("after call args")?;
@@ -554,10 +564,10 @@ impl Parser {
         Ok(Expr::Get(Box::new(expr), name))
     }
 
-    fn parse_anon_fn(&mut self, line: Line) -> Result<Expr> {
+    fn parse_anon_fn(&mut self) -> Result<Expr> {
         let enclosing_fun = self.current_fun.clone();
         self.current_fun = FunType::Function;
-        let params = self.parse_fun_params(line)?;
+        let params = self.parse_fun_params()?;
         let body = self.parse_fun_body(&params)?;
         self.current_fun = enclosing_fun;
         Ok(Expr::AnonFunDecl(params, body))

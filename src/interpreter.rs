@@ -174,7 +174,7 @@ impl Value {
         match self {
             Value::Fun(fun) => Ok(fun.params.len()),
             Value::Class(class) => Ok(class.init_arity(line)),
-            t => error(format!("{} is not a function", t), line),
+            _ => error("Can only call functions and classes.".to_string(), line),
         }
     }
 
@@ -194,7 +194,7 @@ impl Value {
 
                 Ok(Value::Instance(instance))
             }
-            t => error(format!("{} is not a function", t), line),
+            _ => error("Can only call functions and classes.".to_string(), line),
         }
     }
 
@@ -520,7 +520,7 @@ impl<Out: Write> Interpreter<Out> {
                 Some(v) => Ok(v.clone()),
                 None => error(format!("undefined class method {}", name), name.line()),
             },
-            _ => error("only instances have properties", name.line()),
+            _ => error("Only instances have properties.", name.line()),
         }
     }
 
@@ -537,7 +537,7 @@ impl<Out: Write> Interpreter<Out> {
                 instance.borrow_mut().set(name.to_string(), v.clone());
                 Ok(v)
             }
-            _ => error("only instances have fields", name.line()),
+            _ => error("Only instances have fields.", name.line()),
         }
     }
 
@@ -604,7 +604,7 @@ impl<Out: Write> Interpreter<Out> {
                 if let Value::Number(n) = value {
                     Ok(Value::Number(-n))
                 } else {
-                    error("unary \"-\" can only be applied to numbers", op.line())
+                    error("Operand must be a number.", op.line())
                 }
             }
             Token::Bang(_) => {
@@ -657,10 +657,7 @@ impl<Out: Write> Interpreter<Out> {
             Token::Plus(_) => match (left, right) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l + r)),
                 (Value::Str(l), Value::Str(r)) => Ok(Value::Str(format!("{}{}", l, r))),
-                _ => error(
-                    "Operands must be two numbers or two strings.",
-                    op.line(),
-                ),
+                _ => error("Operands must be two numbers or two strings.", op.line()),
             },
             Token::Star(_) => match (left, right) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l * r)),
