@@ -96,7 +96,13 @@ impl Parser {
                 self.declare_and_define(&Token::Super(superclass_name.line()))?;
 
                 if superclass_name.to_string() == class_name.to_string() {
-                    return error("a class can't inherit from itself", superclass_name.line());
+                    return error(
+                        format!(
+                            "Error at '{}': A class can't inherit from itself.",
+                            class_name
+                        ),
+                        superclass_name.line(),
+                    );
                 }
 
                 self.current_class = ClassType::Subclass;
@@ -435,7 +441,10 @@ impl Parser {
             }
             Token::This(line) => {
                 if matches!(self.current_class, ClassType::None) {
-                    return error("Can't use 'this' outside of a class.", line);
+                    return error(
+                        "Error at 'this': Can't use 'this' outside of a class.",
+                        line,
+                    );
                 } else {
                     Ok(Expr::This(Token::This(line)))
                 }
@@ -509,7 +518,10 @@ impl Parser {
 
     fn parse_super(&mut self, line: usize) -> Result<Expr> {
         if matches!(self.current_class, ClassType::None) {
-            return error("Can't use 'super' outside of a class.", line);
+            return error(
+                "Error at 'super': Can't use 'super' outside of a class.",
+                line,
+            );
         }
 
         if !matches!(self.current_class, ClassType::Subclass) {
@@ -649,7 +661,13 @@ impl Parser {
             .unwrap()
             .is_declared(id.to_string().as_str())
         {
-            error(format!("variable \"{}\" already in scope", id), id.line())
+            error(
+                format!(
+                    "Error at '{}': Already a variable with this name in this scope.",
+                    id
+                ),
+                id.line(),
+            )
         } else {
             self.current_scope().unwrap().declare(id.to_string());
             Ok(())

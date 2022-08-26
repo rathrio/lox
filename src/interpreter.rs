@@ -511,7 +511,7 @@ impl<Out: Write> Interpreter<Out> {
                 .method(&method.to_string())
                 .map(|m| m.bind(instance.clone()))
                 .ok_or(RuntimeError {
-                    report: format!("no superclass method \"{}\" found", method),
+                    report: format!("Undefined property '{}'.", method),
                     line: method.line(),
                 }),
 
@@ -767,7 +767,7 @@ impl<Out: Write> Interpreter<Out> {
                 let superclass = self.interpret_expr(expr, env.clone())?;
                 match superclass {
                     Value::Class(class) => Some(class),
-                    _ => return error("superclass must be a class", name.line()),
+                    _ => return error("Superclass must be a class.", name.line()),
                 }
             }
             None => None,
