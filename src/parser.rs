@@ -780,7 +780,7 @@ fn infix_binding_power(op: &Token) -> Result<(u8, u8)> {
         }
         Token::Minus(_) | Token::Plus(_) => Ok((13, 14)),
         Token::Slash(_) | Token::Star(_) => Ok((15, 16)),
-        Token::LeftParen(_) | Token::Dot(_) => Ok((17, 18)),
+        Token::LeftParen(_) | Token::Dot(_) => Ok((20, 21)),
         t => error(format!("invalid infix operator {}", t), t.line()),
     }
 }

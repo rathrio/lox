@@ -93,7 +93,7 @@ impl Instance {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Function {
     name: String,
     params: Vec<Token>,
@@ -158,6 +158,16 @@ impl Function {
     }
 }
 
+impl PartialEq for Function {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.params == other.params
+            && self.stmts == other.stmts
+            && self.is_initializer == other.is_initializer
+            && Rc::ptr_eq(&self.closure, &other.closure)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Number(f64),
@@ -205,6 +215,7 @@ impl Value {
             (Value::Bool(l), Value::Bool(r)) => l == r,
             (Value::Nil, Value::Nil) => true,
             (Value::Class(left), Value::Class(right)) => *left == *right,
+            (Value::Fun(left), Value::Fun(right)) => *left == *right,
             _ => false,
         }
     }

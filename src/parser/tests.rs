@@ -206,6 +206,20 @@ fn test_call() {
 }
 
 #[test]
+fn test_call_precedence() {
+    let script = r#"
+    class Bar {}
+    print !Bar;
+    print !Bar();
+    "#;
+
+    assert_eq!(
+        "(class Bar () () ()) (print (! Bar)) (print (! (call Bar ())))",
+        sexp(script)
+    );
+}
+
+#[test]
 fn test_fun_decl() {
     let script = r#"
         fun add(a, b) {

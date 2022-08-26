@@ -677,3 +677,25 @@ fn test_super_2() {
     interpret(script, &mut out).unwrap();
     assert_outputted(out, "A method".into());
 }
+
+#[test]
+fn test_method_equality() {
+    let mut out = Vec::new();
+    let script = r#"
+    class Foo {
+      method() {}
+    }
+
+    var foo = Foo();
+    var fooMethod = foo.method;
+
+    // Same bound method.
+    print fooMethod == fooMethod; // expect: true
+
+    // Different closurizations.
+    print foo.method == foo.method; // expect: false
+    "#;
+
+    interpret(script, &mut out).unwrap();
+    assert_outputted(out, "true\nfalse".into());
+}
