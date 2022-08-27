@@ -14,6 +14,9 @@ pub struct Args {
 
     #[clap(long)]
     sexp: bool,
+
+    #[clap(long)]
+    ast: bool,
 }
 
 fn main() {
@@ -67,6 +70,12 @@ fn run_file(path: &str, args: &Args) {
     if args.tokens {
         let mut lexer = Lexer::new(&script);
         println!("{:#?}", lexer.lex_tokens());
+        return;
+    }
+
+    if args.ast {
+        let program = Parser::parse_str(&script).unwrap();
+        println!("{:#?}", program);
         return;
     }
 

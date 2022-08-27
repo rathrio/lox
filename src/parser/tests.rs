@@ -421,3 +421,15 @@ fn test_invalid_supers() {
 
     assert!(parse_expr("super.notEvenInAClass()").is_err());
 }
+
+#[test]
+fn test_read_local_in_initializer() {
+    let script = r#"
+        var a = 1;
+        {
+             var a = a + 2;
+             print a;
+        }
+        "#;
+    assert!(parse(script).is_err());
+}

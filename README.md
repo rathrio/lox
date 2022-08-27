@@ -3,6 +3,7 @@
 ## Todo
 
 - [ ] Make it compliant with the jlox test suite
+  - [ ] Error recovery
   - [ ] Native functions (`clock`)
 
 ## Running tests

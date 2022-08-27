@@ -329,6 +329,21 @@ impl Env {
         }
     }
 
+    pub fn assign_at_depth(
+        &mut self,
+        name: String,
+        value: Value,
+        depth: u8,
+    ) -> core::result::Result<Value, String> {
+        if depth == 0 {
+            self.assign(name, value)
+        } else if let Some(e) = &self.enclosing {
+            e.borrow_mut().assign_at_depth(name, value, depth - 1)
+        } else {
+            Err(format!("variable lookup failed for {}", &name))
+        }
+    }
+
     pub fn assign(&mut self, name: String, value: Value) -> core::result::Result<Value, String> {
         if self.values.get(&name).is_some() {
             self.values.insert(name, value.clone());
@@ -487,7 +502,7 @@ impl<Out: Write> Interpreter<Out> {
                 self.interpret_ternary_expr(condition, conclusion, alternate, env)
             }
             Expr::Var(name, depth) => self.interpret_var(name, *depth, env),
-            Expr::Assign(lhs, rhs) => self.interpret_assign(lhs, rhs, env),
+            Expr::Assign(lhs, rhs, depth) => self.interpret_assign(lhs, rhs, *depth, env),
             Expr::Call(callee, t, args) => self.interpret_call(callee, t.line(), args, env),
             Expr::AnonFunDecl(params, body) => self.interpret_anon_fun_decl(params, body, env),
             Expr::Get(object, name) => self.interpret_get(object, name, env),
@@ -590,13 +605,26 @@ impl<Out: Write> Interpreter<Out> {
         callable.call(self, arguments, line)
     }
 
-    fn interpret_assign(&mut self, lhs: &Token, rhs: &Expr, env: ShareableEnv) -> Result<Value> {
+    fn interpret_assign(
+        &mut self,
+        lhs: &Token,
+        rhs: &Expr,
+        depth: Option<u8>,
+        env: ShareableEnv,
+    ) -> Result<Value> {
         match lhs {
             Token::Identifier(line, name) => {
                 let value = self.interpret_expr(rhs, env.clone())?;
-                env.borrow_mut()
-                    .assign(name.into(), value)
-                    .map_err(|msg| RuntimeError::new(msg, *line))
+
+                if let Some(depth) = depth {
+                    env.borrow_mut()
+                        .assign_at_depth(name.into(), value, depth)
+                        .map_err(|msg| RuntimeError::new(msg, *line))
+                } else {
+                    self.env.borrow_mut()
+                        .assign(name.into(), value)
+                        .map_err(|msg| RuntimeError::new(msg, *line))
+                }
             }
             t => error(format!("invalid LHS for assignment \"{}\"", t), t.line()),
         }

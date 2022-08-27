@@ -221,20 +221,6 @@ fn test_block_scope_3() {
 }
 
 #[test]
-fn test_block_scope_4() {
-    let mut out = Vec::new();
-    let script = r#"
-        var a = 1;
-        {
-             var a = a + 2;
-             print a;
-        }
-        "#;
-    interpret(script, &mut out).unwrap();
-    assert_outputted(out, "3".into());
-}
-
-#[test]
 fn test_if_else() {
     let mut out = Vec::new();
     let script = r#"

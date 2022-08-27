@@ -31,7 +31,7 @@ pub enum Expr {
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
     Var(Token, Option<u8>),
     This(Token),
-    Assign(Token, Box<Expr>),
+    Assign(Token, Box<Expr>, Option<u8>),
     Call(Box<Expr>, Token, Vec<Expr>),
     Get(Box<Expr>, Token),
     Set(Box<Expr>, Token, Box<Expr>),
@@ -61,7 +61,7 @@ pub fn sexp_expr(e: &Expr) -> String {
             sexp_expr(alternate)
         ),
         Expr::Var(name, _) => format!("{}", name),
-        Expr::Assign(lhs, rhs) => format!("(= {} {})", lhs, sexp_expr(rhs)),
+        Expr::Assign(lhs, rhs, _) => format!("(= {} {})", lhs, sexp_expr(rhs)),
         Expr::Call(callee, _, args) => format!(
             "(call {} ({}))",
             sexp_expr(callee),
@@ -168,7 +168,7 @@ fn rpn(e: &Expr) -> String {
             rpn(conclusion),
             rpn(alternate)
         ),
-        Expr::Assign(lhs, rhs) => format!("{} {} =", rpn(rhs), lhs),
+        Expr::Assign(lhs, rhs, _) => format!("{} {} =", rpn(rhs), lhs),
         Expr::Call(callee, _, args) => format!(
             "{} {} call",
             args.iter().map(rpn).collect::<Vec<String>>().join(" "),

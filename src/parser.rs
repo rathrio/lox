@@ -164,8 +164,9 @@ impl Parser {
         let eq = self.next();
         let decl = match (&id, &eq) {
             (Token::Identifier(_, _), Token::Equal(_)) => {
+                let rhs = self.parse_expr(0)?;
                 self.define(&id)?;
-                Ok(Stmt::VarDecl(id, self.parse_expr(0)?))
+                Ok(Stmt::VarDecl(id, rhs))
             }
             (t, _) => error("invalid variable declaration", t.line()),
         };
@@ -456,7 +457,28 @@ impl Parser {
             Token::Nil(_) => Ok(Expr::Nil),
             Token::Identifier(line, name) => {
                 let id = Token::Identifier(line, name);
-                Ok(Expr::Var(id.clone(), self.resolve_depth(&id)))
+
+                if self
+                    .current_scope()
+                    .map(|scope| {
+                        scope
+                            .defs
+                            .get(&id.to_string())
+                            .map(|def| !def)
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(false)
+                {
+                    error(
+                        format!(
+                            "Error at '{}':  Can't read local variable in its own initializer.",
+                            id
+                        ),
+                        line,
+                    )
+                } else {
+                    Ok(Expr::Var(id.clone(), self.resolve_depth(&id)))
+                }
             }
             Token::Fun(_) => self.parse_anon_fn(),
             Token::LeftParen(_) => {
@@ -468,6 +490,7 @@ impl Parser {
                 }
             }
             Token::Super(line) => self.parse_super(line),
+            Token::Error(line, msg) => error(format!("Error: {}", msg), line),
             t => error(format!("Error at '{}': Expect expression.", t), t.line()),
         }?;
 
@@ -536,7 +559,7 @@ impl Parser {
 
                 Ok(Expr::Super(id.clone(), method, self.resolve_depth(&id)))
             }
-            _ => error("expect a \".\" after super", line),
+            t => error(format!("Error at '{}': Expect '.' after 'super'.", t), line),
         }
     }
 
@@ -761,7 +784,7 @@ enum FunType {
 fn try_into_assign(expr: Expr, line: Line) -> Result<Expr> {
     if let Expr::Binary(lhs, Token::Equal(_), rhs) = expr {
         match *lhs {
-            Expr::Var(name, _) => return Ok(Expr::Assign(name, rhs)),
+            Expr::Var(name, depth) => return Ok(Expr::Assign(name, rhs, depth)),
             Expr::Get(e, name) => return Ok(Expr::Set(e, name, rhs)),
             _ => (),
         }
