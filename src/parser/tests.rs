@@ -91,7 +91,7 @@ fn test_expr_errors() {
 fn test_binary_lhs_missing_error() {
     match parse_expr(" / 34") {
         Ok(_) => panic!("this parse should not succeed"),
-        Err(e) => assert!(e.report.contains("LHS")),
+        Err(e) => assert!(e.first().unwrap().report.contains("LHS")),
     };
 }
 

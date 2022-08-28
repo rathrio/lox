@@ -20,10 +20,10 @@ impl ParserError {
     }
 }
 
-type Result<T> = core::result::Result<T, ParserError>;
+type Result<T> = core::result::Result<T, Vec<ParserError>>;
 
 fn error<T>(report: impl Into<String>, line: Line) -> Result<T> {
-    Err(ParserError::new(report, line))
+    Err(vec![ParserError::new(report, line)])
 }
 
 #[derive(Debug)]
@@ -61,11 +61,26 @@ impl Parser {
     fn parse_program(&mut self) -> Result<Program> {
         let mut stmts = Vec::new();
 
+        let mut errors = Vec::new();
+
         while !self.peek().is_eof() {
-            stmts.push(self.parse_decl(false)?);
+            match self.parse_decl(false) {
+                Ok(decl) => stmts.push(decl),
+                Err(mut e) => {
+                    // if let ParserError::Syntactic(_, _) = e.first().unwrap() {
+                    self.try_error_recovery();
+                    // }
+
+                    errors.append(&mut e);
+                }
+            }
         }
 
-        Ok(Program { stmts })
+        if errors.is_empty() {
+            Ok(Program { stmts })
+        } else {
+            Err(errors)
+        }
     }
 
     fn parse_decl(&mut self, is_break_allowed: bool) -> Result<Stmt> {
@@ -218,7 +233,7 @@ impl Parser {
     }
 
     fn parse_fun_params(&mut self) -> Result<Vec<Token>> {
-        self.expect_left_paren("after function name")?;
+        self.expect_left_paren("before function params")?;
         let mut params = Vec::new();
         loop {
             if let Token::RightParen(_) = self.peek() {
@@ -740,6 +755,25 @@ impl Parser {
 
         None
     }
+
+    fn try_error_recovery(&mut self) {
+        while !self.peek().is_eof() {
+            match self.peek() {
+                Token::Class(_)
+                | Token::Fun(_)
+                | Token::For(_)
+                | Token::If(_)
+                | Token::Nil(_)
+                | Token::Print(_)
+                | Token::Return(_)
+                | Token::Var(_)
+                | Token::While(_) => break,
+                _ => {
+                    self.next();
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -790,7 +824,10 @@ fn try_into_assign(expr: Expr, line: Line) -> Result<Expr> {
         }
     }
 
-    Err(ParserError::new("invalid LHS in assignment", line))
+    Err(vec![ParserError::new(
+        "Error at '=': Invalid assignment target.".to_string(),
+        line,
+    )])
 }
 
 /// Flattens a comma expression tree into an expression list.

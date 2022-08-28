@@ -46,8 +46,10 @@ fn run_program(script: String, interpreter: &mut Interpreter<io::Stdout>) {
                 std::process::exit(70);
             }
         },
-        Err(error) => {
-            eprintln!("[line {}] {}", error.line, error.report);
+        Err(errors) => {
+            for error in errors {
+                eprintln!("[line {}] {}", error.line, error.report);
+            }
             std::process::exit(65);
         }
     };
@@ -60,7 +62,7 @@ fn run_expr(script: String, interpreter: &mut Interpreter<io::Stdout>) {
             Err(error) => println!("{}", error.report),
         },
 
-        Err(error) => println!("syntax error: {}", error.report),
+        Err(error) => println!("syntax error: {}", error.first().unwrap().report),
     };
 }
 
