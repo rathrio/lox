@@ -410,7 +410,8 @@ fn clock() -> Value {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_secs() as f64,
+            .as_millis() as f64
+            / 1000_f64,
     )
 }
 

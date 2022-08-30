@@ -2,10 +2,12 @@
 
 ## Todo
 
-- [ ] Make it compliant with the jlox test suite
-  - [ ] Native functions (`clock`)
+- [x] Simple benchmarks
+  - [x] How much time is spent in parser? (neglectable)
+  - [ ] AST interpreter perf: Make method lookup faster?
 
 - [ ] Fix REPL (again...)
+
 
 ## Running tests
 
