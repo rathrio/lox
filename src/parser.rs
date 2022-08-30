@@ -99,14 +99,14 @@ impl Parser {
         let enclosing_class = self.current_class.clone();
         self.current_class = ClassType::Class;
 
-        let class_name = self.parse_identifier()?;
+        let class_name = self.parse_identifier(None)?;
         self.declare_and_define(&class_name)?;
 
         let superclass = match self.peek() {
             Token::Less(_) => {
                 self.next();
 
-                let superclass_name = self.parse_identifier()?;
+                let superclass_name = self.parse_identifier(None)?;
                 self.enter_scope();
                 self.declare_and_define(&Token::Super(superclass_name.line()))?;
 
@@ -204,7 +204,7 @@ impl Parser {
             );
         }
 
-        let name = self.parse_identifier()?;
+        let name = self.parse_identifier(None)?;
         self.declare_and_define(&name)?;
 
         self.current_fun = if matches!(fun_type, FunType::Method) && name.to_string() == "init" {
@@ -240,7 +240,7 @@ impl Parser {
                 break;
             }
 
-            params.push(self.parse_identifier()?);
+            params.push(self.parse_identifier(None)?);
             if params.len() > 255 {
                 let offending_param = params.last().unwrap();
                 return error(
@@ -261,10 +261,17 @@ impl Parser {
         Ok(params)
     }
 
-    fn parse_identifier(&mut self) -> Result<Token> {
+    fn parse_identifier(&mut self, custom_msg: Option<&str>) -> Result<Token> {
         match self.next() {
             t if matches!(t, Token::Identifier(_, _)) => Ok(t),
-            t => error(format!("expected an identifier, got {:?}", t), t.line()),
+            t => error(
+                format!(
+                    "Error at '{}': {}",
+                    t,
+                    custom_msg.unwrap_or("Expect identifier.")
+                ),
+                t.line(),
+            ),
         }
     }
 
@@ -563,13 +570,16 @@ impl Parser {
         }
 
         if !matches!(self.current_class, ClassType::Subclass) {
-            return error("Can't use 'super' in a class with no superclass.", line);
+            return error(
+                "Error at 'super': Can't use 'super' in a class with no superclass.",
+                line,
+            );
         }
 
         match self.peek() {
             Token::Dot(_) => {
                 self.next();
-                let method = self.parse_identifier()?;
+                let method = self.parse_identifier(Some("Expect superclass method name."))?;
                 let id = Token::Super(line);
 
                 Ok(Expr::Super(id.clone(), method, self.resolve_depth(&id)))
@@ -610,7 +620,7 @@ impl Parser {
     }
 
     fn parse_get(&mut self, expr: Expr) -> Result<Expr> {
-        let name = self.parse_identifier()?;
+        let name = self.parse_identifier(None)?;
         Ok(Expr::Get(Box::new(expr), name))
     }
 

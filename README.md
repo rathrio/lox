@@ -5,6 +5,8 @@
 - [ ] Make it compliant with the jlox test suite
   - [ ] Native functions (`clock`)
 
+- [ ] Fix REPL (again...)
+
 ## Running tests
 
 ```sh

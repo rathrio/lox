@@ -1,4 +1,11 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Display, io::Write, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    fmt::Display,
+    io::Write,
+    rc::Rc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use crate::{
     ast::{Expr, Program, Stmt},
@@ -93,6 +100,33 @@ impl Instance {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeFunction {
+    name: String,
+    arity: usize,
+}
+
+impl NativeFunction {
+    fn new(name: impl Into<String>, arity: usize) -> Self {
+        Self {
+            name: name.into(),
+            arity,
+        }
+    }
+
+    fn call<Out: Write>(
+        &self,
+        _i: &mut Interpreter<Out>,
+        _args: &mut [Value],
+        _line: usize,
+    ) -> Result<Value> {
+        match self.name.as_str() {
+            "clock" => Ok(clock()),
+            _ => todo!(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Function {
     name: String,
@@ -174,6 +208,7 @@ pub enum Value {
     Str(String),
     Bool(bool),
     Fun(Function),
+    NativeFun(NativeFunction),
     Class(Rc<Class>),
     Instance(Rc<RefCell<Instance>>),
     Nil,
@@ -183,6 +218,7 @@ impl Value {
     fn arity(&self, line: Line) -> Result<usize> {
         match self {
             Value::Fun(fun) => Ok(fun.params.len()),
+            Value::NativeFun(fun) => Ok(fun.arity),
             Value::Class(class) => Ok(class.init_arity(line)),
             _ => error("Can only call functions and classes.".to_string(), line),
         }
@@ -196,6 +232,7 @@ impl Value {
     ) -> Result<Value> {
         match self {
             Value::Fun(fun) => fun.call(i, &mut args, line),
+            Value::NativeFun(fun) => fun.call(i, &mut args, line),
             Value::Class(class) => {
                 let instance = Rc::new(RefCell::new(Instance::new(class.clone())));
                 if let Some(init) = class.method(INITIALIZER_NAME) {
@@ -264,6 +301,7 @@ impl Display for Value {
             Value::Instance(instance) => {
                 write!(f, "{} instance", instance.borrow_mut().class_name())
             }
+            Value::NativeFun(_) => write!(f, "<native fn>"),
         }
     }
 }
@@ -368,17 +406,25 @@ pub struct Interpreter<Out: Write> {
     pub env: ShareableEnv,
 }
 
+fn clock() -> Value {
+    Value::Number(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as f64,
+    )
+}
+
 impl<Out: Write> Interpreter<Out> {
     pub fn new(out: Out) -> Self {
         let env = Rc::new(RefCell::new(Env::new(None)));
-        env.borrow_mut()
-            .define("clock".to_string(), Self::build_native_fun_clock());
+
+        env.borrow_mut().define(
+            "clock".to_string(),
+            Value::NativeFun(NativeFunction::new("clock", 0)),
+        );
 
         Self { out, env }
-    }
-
-    fn build_native_fun_clock() -> Value {
-        Value::Nil
     }
 
     pub fn interpret(&mut self, program: &Program) -> Result<ControlFlow> {
@@ -621,7 +667,8 @@ impl<Out: Write> Interpreter<Out> {
                         .assign_at_depth(name.into(), value, depth)
                         .map_err(|msg| RuntimeError::new(msg, *line))
                 } else {
-                    self.env.borrow_mut()
+                    self.env
+                        .borrow_mut()
                         .assign(name.into(), value)
                         .map_err(|msg| RuntimeError::new(msg, *line))
                 }
