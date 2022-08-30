@@ -106,7 +106,7 @@ impl Parser {
             Token::Less(_) => {
                 self.next();
 
-                let superclass_name = self.parse_identifier(None)?;
+                let superclass_name = self.parse_identifier(Some("Expect superclass name."))?;
                 self.enter_scope();
                 self.declare_and_define(&Token::Super(superclass_name.line()))?;
 
@@ -168,7 +168,7 @@ impl Parser {
         // consume var token
         self.next();
 
-        let id = self.next();
+        let id = self.parse_identifier(Some("Expect variable name."))?;
         self.declare(&id)?;
 
         if let Token::Semicolon(_) = self.peek() {
@@ -222,7 +222,12 @@ impl Parser {
     fn parse_fun_body(&mut self, defs: &[Token]) -> Result<Vec<Stmt>> {
         let body = match self.peek() {
             Token::LeftBrace(_) => self.parse_block(false, defs)?,
-            t => return error("expected { before function body", t.line()),
+            t => {
+                return error(
+                    format!("Error at '{}': Expect '{{' before function body.", t),
+                    t.line(),
+                )
+            }
         };
         let stmts = match body {
             Stmt::Block(list) => list,
@@ -251,6 +256,18 @@ impl Parser {
                     offending_param.line(),
                 );
             }
+
+            match self.peek() {
+                // Let's allow trailing commas
+                Token::Comma(_) => self.next(),
+                Token::RightParen(_) => continue,
+                t => {
+                    return error(
+                        format!("Error at '{}': Expect ')' after parameters.", t),
+                        t.line(),
+                    );
+                }
+            };
 
             // Let's allow trailing commas
             if let Token::Comma(_) = self.peek() {
@@ -299,7 +316,7 @@ impl Parser {
 
         if matches!(self.current_fun, FunType::None) {
             return error(
-                "Error at 'return': Can't return from top level code.",
+                "Error at 'return': Can't return from top-level code.",
                 ret.line(),
             );
         }
@@ -493,7 +510,7 @@ impl Parser {
                 {
                     error(
                         format!(
-                            "Error at '{}':  Can't read local variable in its own initializer.",
+                            "Error at '{}': Can't read local variable in its own initializer.",
                             id
                         ),
                         line,
@@ -620,7 +637,7 @@ impl Parser {
     }
 
     fn parse_get(&mut self, expr: Expr) -> Result<Expr> {
-        let name = self.parse_identifier(None)?;
+        let name = self.parse_identifier(Some("Expect property name after '.'."))?;
         Ok(Expr::Get(Box::new(expr), name))
     }
 
@@ -858,7 +875,7 @@ fn try_into_args(expr: Expr) -> Result<Vec<Expr>> {
 
 fn infix_binding_power(op: &Token) -> Result<(u8, u8)> {
     match op {
-        Token::Equal(_) => Ok((1, 2)),
+        Token::Equal(_) => Ok((2, 1)),
         Token::Comma(_) => Ok((3, 4)),
         Token::Or(_) | Token::And(_) => Ok((5, 6)),
         Token::Query(_) => Ok((8, 7)),

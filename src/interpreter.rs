@@ -589,7 +589,7 @@ impl<Out: Write> Interpreter<Out> {
             }
             Value::Class(class) => match class.class_method(&name.to_string()) {
                 Some(v) => Ok(v.clone()),
-                None => error(format!("undefined class method {}", name), name.line()),
+                None => error(format!("Undefined class method '{}'", name), name.line()),
             },
             _ => error("Only instances have properties.", name.line()),
         }

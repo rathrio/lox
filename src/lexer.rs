@@ -302,7 +302,7 @@ impl Lexer {
 
         if self.is_at_end() {
             self.tokens
-                .push(Token::Error(self.line, "Unterminated string".to_string()));
+                .push(Token::Error(self.line, "Unterminated string.".to_string()));
             return;
         }
 
