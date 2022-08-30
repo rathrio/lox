@@ -38,7 +38,12 @@ impl Class {
     }
 
     fn method(&self, name: &str) -> Option<&Value> {
-        self.methods.get(name)
+        self.methods.get(name).or_else(|| {
+            self.superclass
+                .as_ref()
+                .map(|class| class.method(name))
+                .unwrap_or(None)
+        })
     }
 
     fn init_arity(&self, line: Line) -> usize {
@@ -80,12 +85,6 @@ impl Instance {
 
         if m.is_some() {
             return m;
-        }
-
-        if let Some(superclass) = &class.superclass {
-            return superclass
-                .method(prop)
-                .map(|method| method.bind(instance.clone()));
         }
 
         None
