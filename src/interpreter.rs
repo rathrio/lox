@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     cell::RefCell,
     fmt::Display,
     io::Write,
@@ -212,7 +213,7 @@ impl PartialEq for Function {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Number(f64),
-    Str(String),
+    Str(Cow<'static, str>),
     Bool(bool),
     Fun(Function),
     NativeFun(NativeFunction),
@@ -544,7 +545,7 @@ impl<Out: Write> Interpreter<Out> {
     pub fn interpret_expr(&mut self, expr: &Expr, env: ShareableEnv) -> Result<Value> {
         match expr {
             Expr::Number(n) => Ok(Value::Number(*n)),
-            Expr::Str(s) => Ok(Value::Str(s.into())),
+            Expr::Str(s) => Ok(Value::Str(s.clone())),
             Expr::Bool(b) => Ok(Value::Bool(*b)),
             Expr::Nil => Ok(Value::Nil),
             Expr::Grouping(expr) => self.interpret_expr(expr, env),
@@ -747,7 +748,7 @@ impl<Out: Write> Interpreter<Out> {
             },
             Token::Plus(_) => match (left, right) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l + r)),
-                (Value::Str(l), Value::Str(r)) => Ok(Value::Str(format!("{}{}", l, r))),
+                (Value::Str(l), Value::Str(r)) => Ok(Value::Str(Cow::Owned(format!("{}{}", l, r)))),
                 _ => error("Operands must be two numbers or two strings.", op.line()),
             },
             Token::Star(_) => match (left, right) {

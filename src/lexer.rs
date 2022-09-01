@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{borrow::Cow, fmt::Display};
 
 pub type Line = usize;
 
@@ -31,7 +31,7 @@ pub enum Token {
 
     // Literals
     Identifier(Line, String),
-    String(Line, String),
+    String(Line, Cow<'static, str>),
     Number(Line, f64),
 
     // Keywords
@@ -322,7 +322,8 @@ impl Lexer {
             .iter()
             .collect::<String>();
 
-        self.tokens.push(Token::String(self.line, value));
+        self.tokens
+            .push(Token::String(self.line, Cow::Owned(value)));
     }
 
     fn digit(&mut self) {

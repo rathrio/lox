@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::lexer::Token;
 
 #[derive(Debug)]
@@ -22,7 +24,7 @@ pub enum Stmt {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Number(f64),
-    Str(String),
+    Str(Cow<'static, str>),
     Bool(bool),
     Nil,
     Grouping(Box<Expr>),
