@@ -73,13 +73,13 @@ impl Instance {
     }
 
     fn get_property(instance: Rc<RefCell<Instance>>, prop: &str) -> Option<Value> {
-        let field = instance.borrow_mut().fields.get(prop).cloned();
+        let field = instance.borrow().fields.get(prop).cloned();
 
         if field.is_some() {
             return field;
         }
 
-        let class = &instance.borrow_mut().class;
+        let class = &instance.borrow().class;
 
         let m = class
             .method(prop)
@@ -305,7 +305,7 @@ impl Display for Value {
             Value::Fun(fun) => write!(f, "<fn {}>", fun.decl.name),
             Value::Class(class) => write!(f, "{}", class.name),
             Value::Instance(instance) => {
-                write!(f, "{} instance", instance.borrow_mut().class_name())
+                write!(f, "{} instance", instance.borrow().class_name())
             }
             Value::NativeFun(_) => write!(f, "<native fn>"),
         }
@@ -357,7 +357,7 @@ impl Env {
         if depth == 0 {
             self.get(name)
         } else if let Some(e) = &self.enclosing {
-            e.borrow_mut().get_at_depth(name, depth - 1)
+            e.borrow().get_at_depth(name, depth - 1)
         } else {
             Err(format!("variable lookup failed for {}", &name))
         }
@@ -367,7 +367,7 @@ impl Env {
         if let Some(v) = self.values.get(name) {
             Ok(v.clone())
         } else if let Some(e) = &self.enclosing {
-            e.borrow_mut().get(name)
+            e.borrow().get(name)
         } else {
             Err(format!("Undefined variable '{}'.", &name))
         }
@@ -805,9 +805,9 @@ impl<Out: Write> Interpreter<Out> {
 
     fn interpret_var(&self, name: &Token, depth: Option<u8>, env: ShareableEnv) -> Result<Value> {
         let resolved_var = if let Some(d) = depth {
-            env.borrow_mut().get_at_depth(name.id(), d)
+            env.borrow().get_at_depth(name.id(), d)
         } else {
-            self.env.borrow_mut().get(name.id())
+            self.env.borrow().get(name.id())
         };
 
         resolved_var.map_err(|msg| RuntimeError::new(msg, name.line()))
@@ -888,7 +888,7 @@ impl<Out: Write> Interpreter<Out> {
 
         let env = if let Value::Class(class) = &class {
             if class.superclass.is_some() {
-                env.borrow_mut().enclosing.as_ref().unwrap().clone()
+                env.borrow().enclosing.as_ref().unwrap().clone()
             } else {
                 env
             }
