@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use fnv::FnvHashMap as HashMap;
 
 use crate::{
     ast::{Expr, Program, Stmt},
@@ -810,7 +810,7 @@ struct Scope {
 
 impl Scope {
     fn new() -> Self {
-        let defs = HashMap::new();
+        let defs = HashMap::default();
         Self { defs }
     }
 
