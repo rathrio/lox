@@ -5,6 +5,7 @@
 - [x] Simple benchmarks
   - [x] How much time is spent in parser? (neglectable)
   - [ ] AST interpreter perf: Make method lookup faster?
+    - [ ] Try to bind 
 
 - [ ] Fix REPL (again...)
 
@@ -27,6 +28,15 @@ dart tool/bin/test.dart jlox --interpreter lox
 cd -
 ```
 
+## Generating a flamegraph
+
+```sh
+cargo install flamegraph
+cargo install --path .
+cd ~/git/craftinginterpreters/
+sudo flamegraph -- lox test/benchmark/instantiation.lox
+open flamegraph.svg
+```
 
 ## Resources
 
