@@ -59,6 +59,14 @@ pub enum Token {
 }
 
 impl Token {
+    pub fn id(&self) -> &str {
+        match self {
+            Token::Identifier(_, id) => id,
+            Token::This(_) => "this",
+            t => panic!("{:?} is not an identifier", t),
+        }
+    }
+
     pub fn is_infix_op(&self) -> bool {
         matches!(
             self,

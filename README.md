@@ -4,8 +4,8 @@
 
 - [x] Simple benchmarks
   - [x] How much time is spent in parser? (neglectable)
-  - [ ] AST interpreter perf: Make method lookup faster?
-    - [ ] Try to bind 
+  - [x] AST interpreter perf: Make method lookup faster?
+    - [x] Avoid unnecessary cloning in bind
 
 - [ ] Fix REPL (again...)
 

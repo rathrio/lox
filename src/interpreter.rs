@@ -1,11 +1,12 @@
 use std::{
     cell::RefCell,
-    collections::HashMap,
     fmt::Display,
     io::Write,
     rc::Rc,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+use fnv::FnvHashMap as HashMap;
 
 use crate::{
     ast::{Expr, Program, Stmt},
@@ -66,7 +67,7 @@ pub struct Instance {
 
 impl Instance {
     fn new(class: Rc<Class>) -> Self {
-        let fields = HashMap::new();
+        let fields = HashMap::default();
         Self { class, fields }
     }
 
@@ -162,7 +163,7 @@ impl Function {
     fn get_this(&self, line: Line) -> Result<Value> {
         self.closure
             .borrow()
-            .get_at_depth("this".to_string(), 0)
+            .get_at_depth("this", 0)
             .map_err(|msg| RuntimeError::new(msg, line))
     }
 
@@ -176,7 +177,7 @@ impl Function {
 
         for param in self.decl.params.iter() {
             let v = args.remove(0);
-            local_env.define(param.to_string(), v);
+            local_env.define(param.id().to_string(), v);
         }
 
         match i.interpret_stmts(&self.decl.stmts, Rc::new(RefCell::new(local_env)))? {
@@ -343,7 +344,7 @@ impl Env {
     pub fn new(enclosing: Option<ShareableEnv>) -> Self {
         Self {
             enclosing,
-            values: HashMap::new(),
+            values: HashMap::default(),
         }
     }
 
@@ -351,7 +352,7 @@ impl Env {
         self.values.insert(name, value);
     }
 
-    pub fn get_at_depth(&self, name: String, depth: u8) -> core::result::Result<Value, String> {
+    pub fn get_at_depth(&self, name: &str, depth: u8) -> core::result::Result<Value, String> {
         if depth == 0 {
             self.get(name)
         } else if let Some(e) = &self.enclosing {
@@ -361,8 +362,8 @@ impl Env {
         }
     }
 
-    pub fn get(&self, name: String) -> core::result::Result<Value, String> {
-        if let Some(v) = self.values.get(&name) {
+    pub fn get(&self, name: &str) -> core::result::Result<Value, String> {
+        if let Some(v) = self.values.get(name) {
             Ok(v.clone())
         } else if let Some(e) = &self.enclosing {
             e.borrow_mut().get(name)
@@ -574,7 +575,7 @@ impl<Out: Write> Interpreter<Out> {
 
         match (superclass, object) {
             (Value::Class(superclass), Value::Instance(instance)) => superclass
-                .method(&method.to_string())
+                .method(method.id())
                 .map(|m| m.bind(instance.clone()))
                 .ok_or(RuntimeError {
                     report: format!("Undefined property '{}'.", method),
@@ -587,13 +588,11 @@ impl<Out: Write> Interpreter<Out> {
 
     fn interpret_get(&mut self, object: &Expr, name: &Token, env: ShareableEnv) -> Result<Value> {
         match self.interpret_expr(object, env)? {
-            Value::Instance(instance) => {
-                match Instance::get_property(instance, &name.to_string()) {
-                    Some(v) => Ok(v),
-                    None => error(format!("Undefined property '{}'.", name), name.line()),
-                }
-            }
-            Value::Class(class) => match class.class_method(&name.to_string()) {
+            Value::Instance(instance) => match Instance::get_property(instance, name.id()) {
+                Some(v) => Ok(v),
+                None => error(format!("Undefined property '{}'.", name), name.line()),
+            },
+            Value::Class(class) => match class.class_method(name.id()) {
                 Some(v) => Ok(v.clone()),
                 None => error(format!("Undefined class method '{}'", name), name.line()),
             },
@@ -611,7 +610,7 @@ impl<Out: Write> Interpreter<Out> {
         match self.interpret_expr(object, env.clone())? {
             Value::Instance(instance) => {
                 let v = self.interpret_expr(value, env)?;
-                instance.borrow_mut().set(name.to_string(), v.clone());
+                instance.borrow_mut().set(name.id().to_string(), v.clone());
                 Ok(v)
             }
             _ => error("Only instances have fields.", name.line()),
@@ -805,9 +804,9 @@ impl<Out: Write> Interpreter<Out> {
 
     fn interpret_var(&self, name: &Token, depth: Option<u8>, env: ShareableEnv) -> Result<Value> {
         let resolved_var = if let Some(d) = depth {
-            env.borrow_mut().get_at_depth(name.to_string(), d)
+            env.borrow_mut().get_at_depth(name.id(), d)
         } else {
-            self.env.borrow_mut().get(name.to_string())
+            self.env.borrow_mut().get(name.id())
         };
 
         resolved_var.map_err(|msg| RuntimeError::new(msg, name.line()))
@@ -820,10 +819,10 @@ impl<Out: Write> Interpreter<Out> {
         stmts: &[Stmt],
         env: ShareableEnv,
     ) -> Result<ControlFlow> {
-        let name = name.to_string();
-        let decl = FunctionDeclaration::new(name.clone(), params.to_vec(), stmts.to_vec());
+        let name = name.id();
+        let decl = FunctionDeclaration::new(name.to_string(), params.to_vec(), stmts.to_vec());
         let fun = Function::new(Rc::new(decl), env.clone(), false);
-        env.borrow_mut().define(name, Value::Fun(fun));
+        env.borrow_mut().define(name.to_string(), Value::Fun(fun));
         Ok(ControlFlow::Continue)
     }
 
@@ -835,8 +834,8 @@ impl<Out: Write> Interpreter<Out> {
         class_methods: &[Stmt],
         env: ShareableEnv,
     ) -> Result<ControlFlow> {
-        let class_name = name.to_string();
-        env.borrow_mut().define(class_name.clone(), Value::Nil);
+        let class_name = name.id();
+        env.borrow_mut().define(class_name.to_string(), Value::Nil);
 
         let superclass = match superclass_expr {
             Some(expr) => {
@@ -858,27 +857,21 @@ impl<Out: Write> Interpreter<Out> {
             env
         };
 
-        let mut methods_map = HashMap::new();
+        let mut methods_map = HashMap::default();
         for method in methods {
             if let Stmt::FunDecl(name, params, body) = method {
-                let decl =
-                    FunctionDeclaration::new(name.to_string(), params.to_vec(), body.to_vec());
+                let decl = FunctionDeclaration::new(name.id(), params.to_vec(), body.to_vec());
 
-                let fun = Function::new(
-                    Rc::new(decl),
-                    env.clone(),
-                    name.to_string() == INITIALIZER_NAME,
-                );
+                let fun = Function::new(Rc::new(decl), env.clone(), name.id() == INITIALIZER_NAME);
 
                 methods_map.insert(fun.decl.name.clone(), Value::Fun(fun));
             }
         }
 
-        let mut class_methods_map = HashMap::new();
+        let mut class_methods_map = HashMap::default();
         for method in class_methods {
             if let Stmt::FunDecl(name, params, body) = method {
-                let decl =
-                    FunctionDeclaration::new(name.to_string(), params.to_vec(), body.to_vec());
+                let decl = FunctionDeclaration::new(name.id(), params.to_vec(), body.to_vec());
 
                 let fun = Function::new(Rc::new(decl), env.clone(), false);
                 class_methods_map.insert(fun.decl.name.clone(), Value::Fun(fun));
@@ -886,7 +879,7 @@ impl<Out: Write> Interpreter<Out> {
         }
 
         let class = Value::Class(Rc::new(Class::new(
-            class_name.clone(),
+            class_name.to_string(),
             superclass,
             methods_map,
             class_methods_map,
@@ -903,7 +896,7 @@ impl<Out: Write> Interpreter<Out> {
         };
 
         env.borrow_mut()
-            .assign(class_name.clone(), class)
+            .assign(class_name.to_string(), class)
             .map_err(|_| {
                 RuntimeError::new(
                     format!("class {} is already defined", class_name),
