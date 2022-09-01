@@ -63,6 +63,7 @@ impl Token {
         match self {
             Token::Identifier(_, id) => id,
             Token::This(_) => "this",
+            Token::Super(_) => "super",
             t => panic!("{:?} is not an identifier", t),
         }
     }
