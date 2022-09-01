@@ -126,27 +126,34 @@ impl NativeFunction {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Function {
+#[derive(Debug)]
+pub struct FunctionDeclaration {
     name: String,
     params: Vec<Token>,
     stmts: Vec<Stmt>,
+}
+
+impl FunctionDeclaration {
+    fn new(name: impl Into<String>, params: Vec<Token>, stmts: Vec<Stmt>) -> Self {
+        Self {
+            name: name.into(),
+            params,
+            stmts,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Function {
+    decl: Rc<FunctionDeclaration>,
     closure: ShareableEnv,
     is_initializer: bool,
 }
 
 impl Function {
-    fn new(
-        name: impl Into<String>,
-        params: Vec<Token>,
-        stmts: Vec<Stmt>,
-        closure: ShareableEnv,
-        is_initializer: bool,
-    ) -> Self {
+    fn new(decl: Rc<FunctionDeclaration>, closure: ShareableEnv, is_initializer: bool) -> Self {
         Self {
-            name: name.into(),
-            params,
-            stmts,
+            decl,
             closure,
             is_initializer,
         }
@@ -167,12 +174,12 @@ impl Function {
     ) -> Result<Value> {
         let mut local_env = Env::new(Some(self.closure.clone()));
 
-        for param in self.params.iter() {
+        for param in self.decl.params.iter() {
             let v = args.remove(0);
             local_env.define(param.to_string(), v);
         }
 
-        match i.interpret_stmts(&self.stmts, Rc::new(RefCell::new(local_env)))? {
+        match i.interpret_stmts(&self.decl.stmts, Rc::new(RefCell::new(local_env)))? {
             ControlFlow::Return(v) => {
                 if self.is_initializer {
                     self.get_this(line)
@@ -193,9 +200,9 @@ impl Function {
 
 impl PartialEq for Function {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-            && self.params == other.params
-            && self.stmts == other.stmts
+        self.decl.name == other.decl.name
+            && self.decl.params == other.decl.params
+            && self.decl.stmts == other.decl.stmts
             && self.is_initializer == other.is_initializer
             && Rc::ptr_eq(&self.closure, &other.closure)
     }
@@ -216,7 +223,7 @@ pub enum Value {
 impl Value {
     fn arity(&self, line: Line) -> Result<usize> {
         match self {
-            Value::Fun(fun) => Ok(fun.params.len()),
+            Value::Fun(fun) => Ok(fun.decl.params.len()),
             Value::NativeFun(fun) => Ok(fun.arity),
             Value::Class(class) => Ok(class.init_arity(line)),
             _ => error("Can only call functions and classes.".to_string(), line),
@@ -274,9 +281,7 @@ impl Value {
             env.define("this".to_string(), Value::Instance(this));
 
             let bound_fun = Function::new(
-                fun.name.clone(),
-                fun.params.to_vec(),
-                fun.stmts.to_vec(),
+                fun.decl.clone(),
                 Rc::new(RefCell::new(env)),
                 fun.is_initializer,
             );
@@ -295,7 +300,7 @@ impl Display for Value {
             Value::Str(s) => write!(f, "{}", s),
             Value::Bool(b) => b.fmt(f),
             Value::Nil => write!(f, "nil"),
-            Value::Fun(fun) => write!(f, "<fn {}>", fun.name),
+            Value::Fun(fun) => write!(f, "<fn {}>", fun.decl.name),
             Value::Class(class) => write!(f, "{}", class.name),
             Value::Instance(instance) => {
                 write!(f, "{} instance", instance.borrow_mut().class_name())
@@ -619,7 +624,8 @@ impl<Out: Write> Interpreter<Out> {
         body: &[Stmt],
         env: ShareableEnv,
     ) -> Result<Value> {
-        let fun = Function::new("<anon fn>", params.to_vec(), body.to_vec(), env, false);
+        let decl = FunctionDeclaration::new("<anon fn>", params.to_vec(), body.to_vec());
+        let fun = Function::new(Rc::new(decl), env, false);
         Ok(Value::Fun(fun))
     }
 
@@ -815,13 +821,8 @@ impl<Out: Write> Interpreter<Out> {
         env: ShareableEnv,
     ) -> Result<ControlFlow> {
         let name = name.to_string();
-        let fun = Function::new(
-            name.clone(),
-            params.to_vec(),
-            stmts.to_vec(),
-            env.clone(),
-            false,
-        );
+        let decl = FunctionDeclaration::new(name.clone(), params.to_vec(), stmts.to_vec());
+        let fun = Function::new(Rc::new(decl), env.clone(), false);
         env.borrow_mut().define(name, Value::Fun(fun));
         Ok(ControlFlow::Continue)
     }
@@ -860,30 +861,27 @@ impl<Out: Write> Interpreter<Out> {
         let mut methods_map = HashMap::new();
         for method in methods {
             if let Stmt::FunDecl(name, params, body) = method {
+                let decl =
+                    FunctionDeclaration::new(name.to_string(), params.to_vec(), body.to_vec());
+
                 let fun = Function::new(
-                    name.to_string(),
-                    params.to_vec(),
-                    body.to_vec(),
+                    Rc::new(decl),
                     env.clone(),
                     name.to_string() == INITIALIZER_NAME,
                 );
 
-                methods_map.insert(fun.name.clone(), Value::Fun(fun));
+                methods_map.insert(fun.decl.name.clone(), Value::Fun(fun));
             }
         }
 
         let mut class_methods_map = HashMap::new();
         for method in class_methods {
             if let Stmt::FunDecl(name, params, body) = method {
-                let fun = Function::new(
-                    name.to_string(),
-                    params.to_vec(),
-                    body.to_vec(),
-                    env.clone(),
-                    false,
-                );
+                let decl =
+                    FunctionDeclaration::new(name.to_string(), params.to_vec(), body.to_vec());
 
-                class_methods_map.insert(fun.name.clone(), Value::Fun(fun));
+                let fun = Function::new(Rc::new(decl), env.clone(), false);
+                class_methods_map.insert(fun.decl.name.clone(), Value::Fun(fun));
             }
         }
 
