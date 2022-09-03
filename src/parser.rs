@@ -67,10 +67,7 @@ impl Parser {
             match self.parse_decl(false) {
                 Ok(decl) => stmts.push(decl),
                 Err(mut e) => {
-                    // if let ParserError::Syntactic(_, _) = e.first().unwrap() {
                     self.try_error_recovery();
-                    // }
-
                     errors.append(&mut e);
                 }
             }

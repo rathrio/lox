@@ -128,19 +128,29 @@ impl NativeFunction {
     }
 }
 
+/// The function data (the parameters and body) that is too expensive to clone,
+/// so I'm heap allocating this once and have `Function` reference it through an
+/// `Rc`. This makes quite a difference in the benchmarks.
 #[derive(Debug)]
 pub struct FunctionDeclaration {
     name: String,
     params: Vec<Token>,
     stmts: Vec<Stmt>,
+    is_initializer: bool,
 }
 
 impl FunctionDeclaration {
-    fn new(name: impl Into<String>, params: Vec<Token>, stmts: Vec<Stmt>) -> Self {
+    fn new(
+        name: impl Into<String>,
+        params: Vec<Token>,
+        stmts: Vec<Stmt>,
+        is_initializer: bool,
+    ) -> Self {
         Self {
             name: name.into(),
             params,
             stmts,
+            is_initializer,
         }
     }
 }
@@ -149,16 +159,11 @@ impl FunctionDeclaration {
 pub struct Function {
     decl: Rc<FunctionDeclaration>,
     closure: ShareableEnv,
-    is_initializer: bool,
 }
 
 impl Function {
-    fn new(decl: Rc<FunctionDeclaration>, closure: ShareableEnv, is_initializer: bool) -> Self {
-        Self {
-            decl,
-            closure,
-            is_initializer,
-        }
+    fn new(decl: Rc<FunctionDeclaration>, closure: ShareableEnv) -> Self {
+        Self { decl, closure }
     }
 
     fn get_this(&self, line: Line) -> Result<Value> {
@@ -183,14 +188,14 @@ impl Function {
 
         match i.interpret_stmts(&self.decl.stmts, Rc::new(RefCell::new(local_env)))? {
             ControlFlow::Return(v) => {
-                if self.is_initializer {
+                if self.decl.is_initializer {
                     self.get_this(line)
                 } else {
                     Ok(v)
                 }
             }
             _ => {
-                if self.is_initializer {
+                if self.decl.is_initializer {
                     self.get_this(line)
                 } else {
                     Ok(Value::Nil)
@@ -205,7 +210,7 @@ impl PartialEq for Function {
         self.decl.name == other.decl.name
             && self.decl.params == other.decl.params
             && self.decl.stmts == other.decl.stmts
-            && self.is_initializer == other.is_initializer
+            && self.decl.is_initializer == other.decl.is_initializer
             && Rc::ptr_eq(&self.closure, &other.closure)
     }
 }
@@ -282,11 +287,7 @@ impl Value {
             let mut env = Env::new(Some(fun.closure.clone()));
             env.define("this".to_string(), Value::Instance(this));
 
-            let bound_fun = Function::new(
-                fun.decl.clone(),
-                Rc::new(RefCell::new(env)),
-                fun.is_initializer,
-            );
+            let bound_fun = Function::new(fun.decl.clone(), Rc::new(RefCell::new(env)));
 
             return Value::Fun(bound_fun);
         }
@@ -624,8 +625,8 @@ impl<Out: Write> Interpreter<Out> {
         body: &[Stmt],
         env: ShareableEnv,
     ) -> Result<Value> {
-        let decl = FunctionDeclaration::new("<anon fn>", params.to_vec(), body.to_vec());
-        let fun = Function::new(Rc::new(decl), env, false);
+        let decl = FunctionDeclaration::new("<anon fn>", params.to_vec(), body.to_vec(), false);
+        let fun = Function::new(Rc::new(decl), env);
         Ok(Value::Fun(fun))
     }
 
@@ -821,8 +822,9 @@ impl<Out: Write> Interpreter<Out> {
         env: ShareableEnv,
     ) -> Result<ControlFlow> {
         let name = name.id();
-        let decl = FunctionDeclaration::new(name.to_string(), params.to_vec(), stmts.to_vec());
-        let fun = Function::new(Rc::new(decl), env.clone(), false);
+        let decl =
+            FunctionDeclaration::new(name.to_string(), params.to_vec(), stmts.to_vec(), false);
+        let fun = Function::new(Rc::new(decl), env.clone());
         env.borrow_mut().define(name.to_string(), Value::Fun(fun));
         Ok(ControlFlow::Continue)
     }
@@ -861,9 +863,14 @@ impl<Out: Write> Interpreter<Out> {
         let mut methods_map = HashMap::default();
         for method in methods {
             if let Stmt::FunDecl(name, params, body) = method {
-                let decl = FunctionDeclaration::new(name.id(), params.to_vec(), body.to_vec());
+                let decl = FunctionDeclaration::new(
+                    name.id(),
+                    params.to_vec(),
+                    body.to_vec(),
+                    name.id() == INITIALIZER_NAME,
+                );
 
-                let fun = Function::new(Rc::new(decl), env.clone(), name.id() == INITIALIZER_NAME);
+                let fun = Function::new(Rc::new(decl), env.clone());
 
                 methods_map.insert(fun.decl.name.clone(), Value::Fun(fun));
             }
@@ -872,9 +879,10 @@ impl<Out: Write> Interpreter<Out> {
         let mut class_methods_map = HashMap::default();
         for method in class_methods {
             if let Stmt::FunDecl(name, params, body) = method {
-                let decl = FunctionDeclaration::new(name.id(), params.to_vec(), body.to_vec());
+                let decl =
+                    FunctionDeclaration::new(name.id(), params.to_vec(), body.to_vec(), false);
 
-                let fun = Function::new(Rc::new(decl), env.clone(), false);
+                let fun = Function::new(Rc::new(decl), env.clone());
                 class_methods_map.insert(fun.decl.name.clone(), Value::Fun(fun));
             }
         }
