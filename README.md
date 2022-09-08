@@ -6,7 +6,8 @@
   - [x] How much time is spent in parser? (neglectable)
   - [x] AST interpreter perf: Make method lookup faster?
     - [x] Avoid unnecessary cloning in bind
-    - [ ] Use vector instead of hashmap in interpreter env
+    - ~~[ ] Use vector instead of hashmap in interpreter env~~
+      - Too big of a refactoring, but it'd make quite a difference
 
 - [ ] Fix REPL (again...)
 
